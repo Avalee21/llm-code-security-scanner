@@ -1,5 +1,6 @@
 langgraph
 langchain
+langchain-core
 langchain-groq
 pydantic
 mlflow
