@@ -1,0 +1,8 @@
+langgraph
+langchain
+langchain-groq
+pydantic
+mlflow
+streamlit
+python-dotenv
+pytest
