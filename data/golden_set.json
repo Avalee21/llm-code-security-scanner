@@ -1,0 +1,272 @@
+[
+  {
+    "id": "CASTLE-CWE-22-1",
+    "name": "CASTLE-22-1.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <limits.h>\n\n// mkdir -p /var/www/html\n\nint main(int argc, char *argv[]) {\n    char file_name_buffer[PATH_MAX];\n    const char public_root[] = \"/var/www/html\";\n\n    if (argc != 2) {\n        printf(\"Usage: %s <filename>\\n\", argv[0]);\n        return 1;\n    }\n    snprintf(file_name_buffer, sizeof(file_name_buffer), \"%s/%s\", public_root, argv[1]);\n\n    // Print file content\n    FILE *file = fopen(file_name_buffer, \"r\");\n    if (file == NULL) {\n        perror(\"Error opening file\");\n        return 1;\n    }\n    char ch;\n    while ((ch = fgetc(file)) != EOF) {\n        putchar(ch);\n    }\n\n    // Close the file\n    fclose(file);\n\n    return 0;\n}",
+    "cwe_id": "CWE-22",
+    "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-22-2",
+    "name": "CASTLE-22-2.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <limits.h>\n\n// mkdir -p /var/www/html\n\nint validatePath(char* path) {\n    return 1; // I will implement this correctly, I promise\n}\n\nint main(int argc, char *argv[]) {\n    char file_name_buffer[PATH_MAX];\n    const char public_root[] = \"/var/www/html\";\n\n    if (argc != 2) {\n        printf(\"Usage: %s <filename>\\n\", argv[0]);\n        return 1;\n    }\n    snprintf(file_name_buffer, sizeof(file_name_buffer), \"%s/%s\", public_root, argv[1]);\n\n    // Validate path\n    if (!validatePath(file_name_buffer)) {\n        printf(\"Invalid path: %s\", file_name_buffer);\n        return 1;\n    }\n\n    // Print file content\n    FILE *file = fopen(file_name_buffer, \"r\");\n    if (file == NULL) {\n        perror(\"Error opening file\");\n        return 1;\n    }\n    char ch;\n    while ((ch = fgetc(file)) != EOF) {\n        putchar(ch);\n    }\n\n    // Close the file\n    fclose(file);\n\n    return 0;\n}",
+    "cwe_id": "CWE-22",
+    "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-22-3",
+    "name": "CASTLE-22-3.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <limits.h>\n\n// mkdir -p /var/www/html\n\nint validatePath(char* str, const char* root) {\n    if (strlen(str) < strlen(root)) {\n        return 0;\n    }\n    return strncmp(str, root, strlen(root)) == 0;\n}\n\nint main(int argc, char *argv[]) {\n    char file_name_buffer[PATH_MAX];\n    const char public_root[] = \"/var/www/html\";\n\n    if (argc != 2) {\n        printf(\"Usage: %s <filename>\\n\", argv[0]);\n        return 1;\n    }\n    snprintf(file_name_buffer, sizeof(file_name_buffer), \"%s/%s\", public_root, argv[1]);\n\n    // Validate path\n    if (!validatePath(file_name_buffer, public_root)) {\n        printf(\"Invalid path: %s\", file_name_buffer);\n        return 1;\n    }\n\n    // Print file content\n    FILE *file = fopen(file_name_buffer, \"r\");\n    if (file == NULL) {\n        perror(\"Error opening file\");\n        return 1;\n    }\n    char ch;\n    while ((ch = fgetc(file)) != EOF) {\n        putchar(ch);\n    }\n\n    // Close the file\n    fclose(file);\n\n    return 0;\n}",
+    "cwe_id": "CWE-22",
+    "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-22-7",
+    "name": "CASTLE-22-7.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <libgen.h>\n#include <limits.h>\n#include <unistd.h>\n#include <errno.h>\n\n// ./CASTLE-46 ../../../etc/passwd\n\n#define BASE_DIRECTORY \"/var/www/html/\"\n\n// Function to check for directory traversal\nint is_valid_path(const char *filename) {\n    char real_path[PATH_MAX];\n    char base_path[PATH_MAX];\n\n    // Get the absolute real path of the file\n    if (realpath(filename, real_path) == NULL) {\n        perror(\"Error resolving file path\");\n        return 0;\n    }\n\n    // Get the real path of the base directory\n    if (realpath(BASE_DIRECTORY, base_path) == NULL) {\n        perror(\"Error resolving base directory path\");\n        return 0;\n    }\n\n    // Ensure the file is within the allowed base directory\n    if (strncmp(real_path, base_path, strlen(base_path)) != 0) {\n        printf(\"Directory traversal attempt detected!\\n\");\n        return 0;\n    }\n\n    return 1;\n}\n\nint main(int argc, char *argv[]) {\n    // Ensure a file name is provided\n    if (argc != 2) {\n        printf(\"Usage: %s <filename>\\n\", argv[0]);\n        return 1;\n    }\n\n    // Construct the full file path\n    char full_path[PATH_MAX];\n    snprintf(full_path, sizeof(full_path), \"%s%s\", BASE_DIRECTORY, argv[1]);\n    printf(\"%s\\n\", full_path);\n\n    // Validate the file path to avoid directory traversal attacks\n    if (!is_valid_path(full_path)) {\n        return 1;\n    }\n\n    // Open the file securely\n    FILE *file = fopen(full_path, \"r\");\n    if (file == NULL) {\n        perror(\"Error opening file\");\n        return 1;\n    }\n\n    // Read and print the file content\n    char ch;\n    while ((ch = fgetc(file)) != EOF) {\n        putchar(ch);\n    }\n\n    // Close the file\n    fclose(file);\n\n    return 0;\n}",
+    "cwe_id": "CWE-22",
+    "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-22-8",
+    "name": "CASTLE-22-8.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <unistd.h>\n#include <limits.h>\n#include <ctype.h>\n\n\nint isValidQuery(char *input) {\n    if (strlen(input) > 32) {\n        return 0;\n    }\n\n    for (int i = 0; i < strlen(input); i++) {\n        if (!isalpha(input[i]) && !isdigit(input[i])) {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint isValidPath(char *input) {\n    if (strlen(input) > 32) {\n        return 0;\n    }\n\n    for (int i = 0; i < strlen(input); i++) {\n        if (!isalpha(input[i]) && !isdigit(input[i]) && input[i] != '.') {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint main(int argc, char *argv[]) {\n    const char public_root[] = \"/var/www/html\";\n\n    // Check if a file path and search term are provided\n    if (argc != 3) {\n        printf(\"Usage: %s <file_path> <search_term>\\n\", argv[0]);\n        return 1;\n    }\n\n    // Validate if the file exists\n    char path[PATH_MAX];\n    snprintf(path, sizeof(path), \"%s/%s\", public_root, argv[1]);\n    if (access(path, F_OK) != 0) {\n        perror(\"Error: File does not exist or no permission to access.\");\n        return 1;\n    }\n\n    // Validate query\n    if (!isValidQuery(argv[2])) {\n        printf(\"Invalid search parameter\");\n        return 1;\n    }\n\n    // Validate path\n    if (!isValidPath(path)) {\n        printf(\"Invalid path with illegal characters\");\n        return 1;\n    }\n\n    // Construct the grep command\n    char command[PATH_MAX + 33 + 11];\n    snprintf(command, sizeof(command), \"grep %s %s\", argv[2], path);\n    printf(\"%s\", command);\n\n    // Execute the grep command\n    int result = system(command);\n\n    // Check for errors in grep execution\n    if (result == -1) {\n        perror(\"Error executing grep\");\n        return 1;\n    }\n\n    return 0;\n}",
+    "cwe_id": "CWE-22",
+    "cwe_name": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-78-11",
+    "name": "CASTLE-78-1.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    char ip[46]; // ipv6 address length = 45 chars + null\n\n    // Ask for the IP address\n    printf(\"Enter the IP address to ping: \");\n    fgets(ip, sizeof(ip), stdin);\n\n    // Create the ping command\n    char command[150];\n    snprintf(command, sizeof(command), \"ping %s\", ip);\n\n    // Execute the ping command\n    system(command);\n\n    return 0;\n}",
+    "cwe_id": "CWE-78",
+    "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-78-12",
+    "name": "CASTLE-78-2.c",
+    "code": "#include <stdio.h>\n#include <string.h>\n#include <stdlib.h>\n\n#define CMD_MAX 256\n\nint main(int argc, char** argv) {\n    char cmd[CMD_MAX] = \"/usr/bin/cat \";\n    strncat(cmd, argv[1], CMD_MAX - 14);\n    system(cmd);\n    return 0;\n}",
+    "cwe_id": "CWE-78",
+    "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-78-13",
+    "name": "CASTLE-78-3.c",
+    "code": "#include <stdio.h>\n#include <unistd.h>\n#include <string.h>\n#include <stdlib.h>\n\nint main(int argc, char **argv) {\n    char cat[] = \"cat \";\n    char *command;\n    unsigned long long commandLength;\n\n    if (argc != 2) {\n        printf(\"Usage: %s <file_path>\\n\", argv[0]);\n        return 1;\n    }\n\n    commandLength = strlen(cat) + strlen(argv[1]) + 1;\n    command = (char*) malloc(commandLength);\n    if (command == NULL) {\n        return 1;\n    }\n    \n    strncpy(command, cat, commandLength);\n    strncat(command, argv[1], (commandLength - strlen(cat)) );\n\n    system(command);\n    free(command);\n    return 0;\n}",
+    "cwe_id": "CWE-78",
+    "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-78-17",
+    "name": "CASTLE-78-7.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <ctype.h>\n#include <string.h>\n\nint isValidNumber(char *input) {\n    for (int i = 0; i < strlen(input); i++) {\n        if (!isdigit(input[i])) {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint main() {\n    char userInput[10];\n    int numFiles;\n\n    printf(\"Enter the number of files to list: \");\n    fgets(userInput, sizeof(userInput), stdin);\n\n    // Remove trailing newline character from fgets\n    userInput[strcspn(userInput, \"\\n\")] = '\\0';\n\n    // Validate input\n    if (!isValidNumber(userInput)) {\n        printf(\"Invalid input. Please enter a valid number.\\n\");\n        return 1;\n    }\n\n    // Convert the valid input to an integer\n    numFiles = atoi(userInput);\n\n    // Execute a safe system command with the validated number\n    char command[256];\n    snprintf(command, sizeof(command), \"ls -l | head -n %d\", numFiles);\n    system(command);\n\n    return 0;\n}",
+    "cwe_id": "CWE-78",
+    "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-78-18",
+    "name": "CASTLE-78-8.c",
+    "code": "#include <string.h>\n#include <stdlib.h>\n#include <stdio.h>\n#include <stdbool.h>\n#include <ctype.h>\n\n#define SIZE_CMD 10\nconst char cmd[SIZE_CMD] = \"/bin/cat \";\n\nint main(int argc, char *argv[])\n{\n    unsigned i;\n    char buff[512];\n    char sys[512];\n    if (fgets(buff, 512 - SIZE_CMD, stdin))\n    {\n        strcpy(sys, cmd);\n        strcat(sys, buff);\n\n        for (int i = 0; i < strlen(sys); i++)\n        {\n            if (!isalpha(sys[i]) && sys[i] != '.')\n            {\n                fprintf(stderr, \"illegal character in input\");\n                return 0;\n            }\n        }\n\n        for (i = 0; i < 5; ++i)\n        {\n            if (system(sys) < 0)\n                fprintf(stderr, \"system() failed\");\n        }\n    }\n    return 0;\n}",
+    "cwe_id": "CWE-78",
+    "cwe_name": "Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-89-21",
+    "name": "CASTLE-89-1.c",
+    "code": "// create table existential_crises (id INT, name VARCHAR(12))\n// insert into existential_crises values (1, \"abc\")\n\n#include <stdio.h>\n#include <sqlite3.h>\n\nint main() {\n    sqlite3 *db;\n    sqlite3_stmt *res;\n    int rc;\n\n    rc = sqlite3_open(\"crises.db\", &db);\n\n    if (rc != SQLITE_OK) {\n        fprintf(stderr, \"Cannot open database: %s\\n\", sqlite3_errmsg(db));\n        sqlite3_close(db);\n        return 1;\n    }\n\n    // Prepare an SQL query\n    char id[32];\n    printf(\"Enter the id of the record: \");\n    fgets(id, sizeof(id), stdin);\n    char sql[256];\n    snprintf(sql, sizeof(sql), \"SELECT * FROM existential_crises WHERE id = '%s'\", id);\n\n    // Compile the SQL query\n    rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);\n    if (rc != SQLITE_OK) {\n        fprintf(stderr, \"Failed to prepare statement: %s\\n\", sqlite3_errmsg(db));\n        sqlite3_close(db);\n        return 1;\n    }\n\n    // Execute SQL query\n    while (sqlite3_step(res) == SQLITE_ROW) {\n        int id = sqlite3_column_int(res, 0);\n        const unsigned char *name = sqlite3_column_text(res, 1);\n\n        printf(\"ID: %d | Name: %s\\n\", id, name);\n    }\n\n    // Finalize and clean up\n    sqlite3_finalize(res);\n    sqlite3_close(db);\n\n    return 0;\n}",
+    "cwe_id": "CWE-89",
+    "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-89-22",
+    "name": "CASTLE-89-2.c",
+    "code": "#include <mysql/mysql.h>\n#include <stdio.h>\n#include <stdlib.h>\n\n\nint main() {\n    MYSQL *conn;\n    MYSQL_RES *res;\n    MYSQL_ROW row;\n\n    // Credentials\n    const char *server = getenv(\"DB_ADDRESS\");\n    const char *user = getenv(\"DB_USERNAME\");\n    const char *password = getenv(\"DB_PASSWORD\");\n    const char *database = getenv(\"DB_DATABASE\");\n    if (server == NULL || user == NULL || password == NULL || database == NULL) {\n        printf(\"Missing database credentials\\n\");\n        return 1;\n    }\n\n    // Initialize MySQL connection\n    conn = mysql_init(NULL);\n    if (conn == NULL) {\n        printf(\"Failed to allocate memory.\\n\");\n        return 1; // Indicate error and exit\n    }\n\n    // Connect to database\n    if (!mysql_real_connect(conn, server, user, password, database, 0, NULL, 0)) {\n        fprintf(stderr, \"Connection failed: %s\\n\", mysql_error(conn));\n        return 1;\n    }\n    printf(\"Connection successful!\\n\");\n\n    char id[32];\n    printf(\"ID: \");\n    fgets(id, sizeof(id), stdin);\n\n    char sql[256];\n    snprintf(sql, sizeof(sql), \"SELECT * FROM tokens WHERE id = %s\", id);\n\n    // Send SQL query\n    if (mysql_query(conn, sql)) {\n        fprintf(stderr, \"Query failed: %s\\n\", mysql_error(conn));\n        return 1;\n    }\n\n    // Store the result\n    res = mysql_store_result(conn);\n\n    // Output the result row by row\n    int num_fields = mysql_num_fields(res);\n    while ((row = mysql_fetch_row(res))) {\n        unsigned long *lengths;\n        lengths = mysql_fetch_lengths(res);\n        for(int i = 0; i < num_fields; i++) {\n            printf(\"[%.*s] \", (int) lengths[i],\n                    row[i] ? row[i] : \"NULL\");\n        }\n        printf(\"\\n\");\n    }\n\n    // Clean up\n    mysql_free_result(res);\n    mysql_close(conn);\n\n    return 0;\n}",
+    "cwe_id": "CWE-89",
+    "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-89-23",
+    "name": "CASTLE-89-3.c",
+    "code": "#include <mysql/mysql.h>\n#include <stdio.h>\n#include <string.h>\n#include <unistd.h>\n#include <stdlib.h>\n#include <termios.h>\n#include <stdint.h>\n\n\nchar *my_memset_s(char *s, int c, size_t n)\n{\n    volatile char *p = s;\n\n    if (p != NULL)\n        while (n--)\n            *p++ = c;\n\n    return s;\n}\n\n\nchar *getpass_r(const char *prompt)\n{\n    struct termios oflags, nflags;\n    char password[64] = {'\\0'};\n    char *ret = NULL;\n\n    \n    if (tcgetattr(fileno(stdin), &oflags))\n        return NULL;\n\n    nflags = oflags;\n    nflags.c_lflag &= ~ECHO;\n    nflags.c_lflag |= ECHONL;\n\n    if (tcsetattr(fileno(stdin), TCSAFLUSH, &nflags))\n        return NULL;\n\n    \n    fprintf(stderr, \"%s\", prompt);\n    ret = fgets(password, sizeof(password), stdin);\n\n    \n    if (tcsetattr(fileno(stdin), TCSAFLUSH, &oflags))\n    {\n        my_memset_s(password, 0, sizeof(password));\n        return NULL;\n    }\n\n    if (ret)\n    {\n        strtok(password, \"\\n\");\n        ret = strdup(password);\n        my_memset_s(password, 0, sizeof(password));\n    }\n\n    return ret;\n}\n\nint main(int argc, char *argv[])\n{\n    MYSQL *conn;\n    MYSQL_RES *res;\n    MYSQL_ROW row;\n\n    size_t arglen, fmtlen;\n\n    char *server = \"localhost\";\n    char *user = \"root\";\n    char *database = \"bank\";\n    char *password;\n    char *query;\n    char *fmtString = \"SELECT * FROM users WHERE firstname LIKE '%s'\";\n\n    if (argc < 2)\n    {\n        printf(\"You should give an entry parameter!\\n\");\n        return -1;\n    }\n\n    // Authenticate\n    conn = mysql_init(NULL);\n    if (!conn)\n        return -1;\n\n    password = getpass_r(\"DB Password: \");\n    if (!password)\n    {\n        mysql_close(conn);\n        return -1;\n    }\n\n    if (!mysql_real_connect(conn, server,\n                            user, password, database, 0, NULL, 0))\n    {\n        my_memset_s(password, 0, strlen(password));\n        free(password);\n        mysql_close(conn);\n        return -1;\n    }\n\n    my_memset_s(password, 0, strlen(password));\n    free(password);\n\n\n    // Send Query\n    arglen = strlen(argv[1]);\n    fmtlen = strlen(fmtString);\n    if (arglen > SIZE_MAX / sizeof *query - fmtlen)\n    {\n        mysql_close(conn);\n        return -1;\n    }\n    query = malloc((arglen + fmtlen) * sizeof *query);\n    if (query == NULL)\n    {\n        mysql_close(conn);\n        return -1;\n    }\n\n    sprintf(query, fmtString, argv[1]);\n    if (mysql_query(conn, query))\n    {\n        free(query);\n        mysql_close(conn);\n        return -1;\n    }\n\n    res = mysql_use_result(conn);\n\n    while ((row = mysql_fetch_row(res)) != NULL)\n        printf(\"%s %s\\n\", row[1], row[2]);\n\n    free(query);\n    mysql_free_result(res);\n    mysql_close(conn);\n    return 0;\n}",
+    "cwe_id": "CWE-89",
+    "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-89-27",
+    "name": "CASTLE-89-7.c",
+    "code": "// create table students (id INT, name VARCHAR(18), class VARCHAR(5))\n// insert into students values (1, 'Arnold', \"1b\")\n// insert into students values (2, 'Claire', \"3c\")\n\n#include <stdio.h>\n#include <sqlite3.h>\n\nint main() {\n    sqlite3 *db;\n    sqlite3_stmt *res;\n    int rc;\n\n    rc = sqlite3_open(\"students.db\", &db);\n\n    if (rc != SQLITE_OK) {\n        fprintf(stderr, \"Cannot open database: %s\\n\", sqlite3_errmsg(db));\n        sqlite3_close(db);\n        return 1;\n    }\n\n    // Compile the SQL query\n    rc = sqlite3_prepare_v2(db, \"SELECT * FROM students\", -1, &res, 0);\n    if (rc != SQLITE_OK) {\n        fprintf(stderr, \"Failed to prepare statement: %s\\n\", sqlite3_errmsg(db));\n        sqlite3_close(db);\n        return 1;\n    }\n\n    // Execute SQL query\n    while (sqlite3_step(res) == SQLITE_ROW) {\n        int id = sqlite3_column_int(res, 0);\n        const unsigned char *name = sqlite3_column_text(res, 1);\n        const unsigned char *grade = sqlite3_column_text(res, 2);\n\n        printf(\"Name: %s, Grade: %s\\n\", name, grade);\n    }\n\n    // Finalize and clean up\n    sqlite3_finalize(res);\n    sqlite3_close(db);\n\n    return 0;\n}",
+    "cwe_id": "CWE-89",
+    "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-89-28",
+    "name": "CASTLE-89-8.c",
+    "code": "#include <mysql/mysql.h>\n#include <stdio.h>\n#include <stdlib.h>\n\n\nint validate_id(const char *id) {\n    for (int i = 0; id[i] != '\\0'; i++) {\n        if (id[i] < '0' || id[i] > '9') {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint main() {\n    MYSQL *conn;\n    MYSQL_RES *res;\n    MYSQL_ROW row;\n\n    // Credentials\n    const char *server = getenv(\"DB_ADDRESS\");\n    const char *user = getenv(\"DB_USERNAME\");\n    const char *password = getenv(\"DB_PASSWORD\");\n    const char *database = getenv(\"DB_DATABASE\");\n    if (server == NULL || user == NULL || password == NULL || database == NULL) {\n        printf(\"Missing database credentials\\n\");\n        return 1;\n    }\n\n    // Initialize MySQL connection\n    conn = mysql_init(NULL);\n    if (conn == NULL) {\n        printf(\"Failed to allocate memory.\\n\");\n        return 1; // Indicate error and exit\n    }\n\n    // Connect to database\n    if (!mysql_real_connect(conn, server, user, password, database, 0, NULL, 0)) {\n        fprintf(stderr, \"Connection failed: %s\\n\", mysql_error(conn));\n        return 1;\n    }\n    printf(\"Connection successful!\\n\");\n\n    char id[32];\n    printf(\"ID: \");\n    fgets(id, sizeof(id), stdin);\n\n    // Validate input\n    if (!validate_id(id)) {\n        printf(\"Invalid ID\\n\");\n        return 1;\n    }\n\n    char sql[256];\n    snprintf(sql, sizeof(sql), \"SELECT * FROM tokens WHERE id = %s\", id);\n\n    // Send SQL query\n    if (mysql_query(conn, sql)) {\n        fprintf(stderr, \"Query failed: %s\\n\", mysql_error(conn));\n        return 1;\n    }\n\n    // Store the result\n    res = mysql_store_result(conn);\n\n    // Output the result row by row\n    int num_fields = mysql_num_fields(res);\n    while ((row = mysql_fetch_row(res))) {\n        unsigned long *lengths;\n        lengths = mysql_fetch_lengths(res);\n        for(int i = 0; i < num_fields; i++) {\n            printf(\"[%.*s] \", (int) lengths[i],\n                    row[i] ? row[i] : \"NULL\");\n        }\n        printf(\"\\n\");\n    }\n\n    // Clean up\n    mysql_free_result(res);\n    mysql_close(conn);\n\n    return 0;\n}",
+    "cwe_id": "CWE-89",
+    "cwe_name": "Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-190-51",
+    "name": "CASTLE-190-1.c",
+    "code": "#include <stdio.h>\n\nint main() {\n    int x=77;\n    int y=x*x*x;\n    int z=y*y;\n    unsigned int r= z/1000;\n    printf(\"Result %u\\n\", r);\n    return 0;\n}",
+    "cwe_id": "CWE-190",
+    "cwe_name": "Integer Overflow or Wraparound",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-190-52",
+    "name": "CASTLE-190-2.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main()\n{\n    long long int APPLE = atoi(\"3000000000\")+1;\n    printf(\"%lld\\n\", APPLE);\n\n    return 0;\n}",
+    "cwe_id": "CWE-190",
+    "cwe_name": "Integer Overflow or Wraparound",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-190-53",
+    "name": "CASTLE-190-3.c",
+    "code": "#include <stdio.h>\n\n// INT_MAX 2147483647\n\nint main() {\n    int n = 2147483647;\n\n    printf(\"%d\\n\", n);\n    printf(\"%d\\n\", n + 1);\n\n    return 0;\n}",
+    "cwe_id": "CWE-190",
+    "cwe_name": "Integer Overflow or Wraparound",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-190-57",
+    "name": "CASTLE-190-7.c",
+    "code": "#include <stdio.h>\n\n\nvoid printMatrix(int rows, int cols, int mat[rows][cols]) {\n    for (int i = 0; i < rows; i++) {\n        for (int j = 0; j < cols; j++) {\n            printf(\"%d \", mat[i][j]);\n        }\n        printf(\"\\n\");\n    }\n}\n\nvoid addMatrices(int rows, int cols, int mat1[rows][cols], int mat2[rows][cols], int result[rows][cols]) {\n    for (int i = 0; i < rows; i++) {\n        for (int j = 0; j < cols; j++) {\n            result[i][j] = mat1[i][j] + mat2[i][j];\n        }\n    }\n}\n\nvoid scalarMult(int rows, int cols, int mat[rows][cols], int scalar) {\n    for (int i = 0; i < rows; i++) {\n        for (int j = 0; j < cols; j++) {\n            mat[i][j] *= scalar;\n        }\n    }\n}\n\nvoid transpose(int rows, int cols, int mat[rows][cols], int result[cols][rows]) {\n    for (int i = 0; i < cols; i++) {\n        for (int j = 0; j < rows; j++) {\n            result[i][j] = mat[j][i];\n        }\n    }\n}\n\nint main() {\n    int mat1[3][3] = {{1, 2, 3}, {4, 5, 6}, {7, 8, 9}};\n    int mat2[3][3] = {{9, 8, 7}, {6, 5, 4}, {3, 2, 1}};\n    int sumMat[3][3] = {0};\n    int scalar = 2;\n    int transMat[3][3] = {0};\n\n    printf(\"Matrix 1:\\n\");\n    printMatrix(3, 3, mat1);\n\n    printf(\"\\nMatrix 2:\\n\");\n    printMatrix(3, 3, mat2);\n\n    printf(\"\\nSum of matrices:\\n\");\n    addMatrices(3, 3, mat1, mat2, sumMat);\n    printMatrix(3, 3, sumMat);\n\n    printf(\"\\nScalar multiplication of matrix 1:\\n\");\n    scalarMult(3, 3, mat1, scalar);\n    printMatrix(3, 3, mat1);\n\n    printf(\"\\nTranspose of matrix 2:\\n\");\n    transpose(3, 3, mat2, transMat);\n    printMatrix(3, 3, transMat);\n\n    return 0;\n}",
+    "cwe_id": "CWE-190",
+    "cwe_name": "Integer Overflow or Wraparound",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-190-58",
+    "name": "CASTLE-190-8.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\n\n#define ROW 5\n#define COL 5\n\nint grid[ROW][COL];\nint visited[ROW][COL];\n\n// Define a struct to hold the x, y coordinates of a cell\ntypedef struct {\n    int x;\n    int y;\n} Point;\n\n// Define a queue to hold points\nstruct Queue {\n    Point arr[ROW*COL];\n    int front, rear;\n};\n\n// Create a new queue\nstruct Queue* newQueue() {\n    struct Queue* queue = (struct Queue*)malloc(sizeof(struct Queue));\n    if (queue == NULL) {\n        return NULL;\n    }\n\n    queue->front = queue->rear = -1;\n    return queue;\n}\n\n// Check if the queue is empty\nint isEmpty(struct Queue* queue) {\n    return queue->front == -1;\n}\n\n// Add a point to the queue\nvoid enqueue(struct Queue* queue, Point point) {\n    queue->rear = (queue->rear + 1) % (ROW*COL);\n    queue->arr[queue->rear] = point;\n    if(queue->front == -1) {\n        queue->front++;\n    }\n}\n\ntypedef struct {\n    Point p;\n    int hasValue;\n} OptionalPoint;\n\n// Remove a point from the queue\nOptionalPoint dequeue(struct Queue* queue) {\n    if (isEmpty(queue)) {\n        Point p = {0, 0};\n        OptionalPoint op = {p, 0};\n        return op;\n    }\n\n    OptionalPoint point = { queue->arr[queue->front], 1 };\n    if(queue->front == queue->rear) {\n        queue->front = queue->rear = -1;\n    } else {\n        queue->front = (queue->front + 1) % (ROW*COL);\n    }\n    return point;\n}\n\n// Check if a given point is valid\nint isValid(int x, int y) {\n    if(x < 0 || x >= ROW || y < 0 || y >= COL) {\n        return 0;\n    }\n    if(grid[x][y] == 1) {\n        return 0;\n    }\n    if(visited[x][y] == 1) {\n        return 0;\n    }\n    return 1;\n}\n\n// Find the shortest path between two points on the grid\nvoid findPath(Point start, Point end) {\n    struct Queue* queue = newQueue();\n    if (queue == NULL) {\n        return;\n    }\n\n    visited[start.x][start.y] = 1;\n    enqueue(queue, start);\n    while(!isEmpty(queue)) {\n        OptionalPoint op = dequeue(queue);\n        if (op.hasValue == 0) {\n            break;\n        }\n        Point curr = op.p;\n        if(curr.x == end.x && curr.y == end.y) {\n            printf(\"Path found!\\n\");\n            free(queue);\n            return;\n        }\n        Point up = {curr.x-1, curr.y};\n        Point down = {curr.x+1, curr.y};\n        Point left = {curr.x, curr.y-1};\n        Point right = {curr.x, curr.y+1};\n        if(isValid(up.x, up.y)) {\n            visited[up.x][up.y] = 1;\n            enqueue(queue, up);\n        }\n        if(isValid(down.x, down.y)) {\n            visited[down.x][down.y] = 1;\n            enqueue(queue, down);\n        }\n        if(isValid(left.x, left.y)) {\n            visited[left.x][left.y] = 1;\n            enqueue(queue, left);\n        }\n        if(isValid(right.x, right.y)) {\n            visited[right.x][right.y] = 1;\n            enqueue(queue, right);\n        }\n    }\n    printf(\"No path found.\\n\");\n    free(queue);\n}\n\n// Initialize the grid and visited arrays\nvoid initialize() {\n    for(int i=0; i<ROW; i++) {\n        for(int j=0; j<COL; j++) {\n            grid[i][j] = 0;\n            visited[i][j] = 0;\n        }\n    }\n    grid[1][0] = 1;\n    grid[1][1] = 1;\n    grid[1][2] = 1;\n    grid[2][1] = 1;\n    grid[3][1] = 1;\n    grid[3][2] = 1;\n}\n\nint main() {\n    initialize();\n    Point start = {0, 0};\n    Point end = {4, 4};\n    findPath(start, end);\n    return 0;\n}",
+    "cwe_id": "CWE-190",
+    "cwe_name": "Integer Overflow or Wraparound",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-476-131",
+    "name": "CASTLE-476-1.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    int *A = (int*) malloc(sizeof(int) * 10); // Here malloc can return NULL!\n\n    for(int i=1; i<=4; i++) {\n        A[i] = i;\n        // printf(\"%d\\n\", A[i]);\n    }\n    free(A);\n\n    return 0;\n}",
+    "cwe_id": "CWE-476",
+    "cwe_name": "NULL Pointer Dereference",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-476-132",
+    "name": "CASTLE-476-2.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    int n=3;\n    printf(\"Enter 3 number (maximum 3 digits)\");\n    int *arr = (int*) malloc(n * sizeof(int)); //malloc() can return NULL\n    for(int i = 0; i < n; i++) {\n        scanf(\"%3d\", &arr[i]);\n    }\n    printf(\"The element of the arraye are: \");\n    for(int i = 0; i < n; i++) {\n\t\tprintf(\" %d \", arr[i]);\n    }\n\n    free(arr);\n\n    return 0;\n}\n",
+    "cwe_id": "CWE-476",
+    "cwe_name": "NULL Pointer Dereference",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-476-133",
+    "name": "CASTLE-476-3.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\nint* min(int* a, int* b) {\n    if (*a < *b) {\n        return a;\n    }\n    if (*b < *a) {\n        return b;\n    }\n    return NULL;\n}\n\nint main() {\n    int a = 3, b = 5;\n\n    printf(\"min(%d, %d) = %d\\n\", a, b, *min(&a, &b));\n    printf(\"min(%d, %d) = %d\\n\", b, a, *min(&b, &a));\n    printf(\"min(%d, %d) = %d\\n\", a, a, *min(&a, &a));\n\n    return 0;\n}",
+    "cwe_id": "CWE-476",
+    "cwe_name": "NULL Pointer Dereference",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-476-137",
+    "name": "CASTLE-476-7.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\n\nint main() {\n    int *A = (int*) malloc(sizeof(int) * 10);\n    if (A == NULL) {\n        return 0;\n    }\n\n    for(int i=1; i<=4; i++) {\n        A[i] = i;\n    }\n    free(A);\n\n    return 0;\n}",
+    "cwe_id": "CWE-476",
+    "cwe_name": "NULL Pointer Dereference",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-476-138",
+    "name": "CASTLE-476-8.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n\n#define NULLPTR p\n\nint main() {\n    int a = 8;\n    int* p = &a;\n\n    const int* const nullptr = NULLPTR;\n    printf(\"Value: %d\\n\", *nullptr);\n\n    return 0;\n}",
+    "cwe_id": "CWE-476",
+    "cwe_name": "NULL Pointer Dereference",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-798-211",
+    "name": "CASTLE-798-1.c",
+    "code": "#include <openssl/evp.h>\n#include <openssl/aes.h>\n#include <string.h>\n#include <stdio.h>\n#include <stdlib.h>\n\nvoid handleErrors() {\n    fprintf(stderr, \"Error occurred\\n\");\n    exit(1);\n}\n\nvoid aes256_encrypt(const char *plaintext, const unsigned char *key, const unsigned char *iv, unsigned char *ciphertext) {\n    EVP_CIPHER_CTX *ctx;\n    int len;\n    int ciphertext_len;\n\n    // Create and initialize the context\n    if (!(ctx = EVP_CIPHER_CTX_new())) handleErrors();\n\n    // Initialize the encryption operation with AES-256-CBC\n    if (1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) handleErrors();\n\n    // Provide the message to be encrypted, and obtain the encrypted output\n    if (1 != EVP_EncryptUpdate(ctx, ciphertext, &len, (unsigned char *)plaintext, strlen(plaintext))) handleErrors();\n\n    // Finalize the encryption\n    if (1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)) handleErrors();\n\n    // Clean up\n    EVP_CIPHER_CTX_free(ctx);\n}\n\nint main() {\n    char message[1024];\n    printf(\"Message: \");\n    fgets(message, sizeof(message), stdin);\n    message[strcspn(message, \"\\n\")] = '\\0';\n\n    // 32 bytes\n    unsigned char key[32] = {\n        0x60, 0xb7, 0x25, 0xf1, 0x0c, 0x9c, 0x85, 0xc7,\n        0x0d, 0x97, 0x88, 0x0d, 0xfe, 0x81, 0x91, 0xb3,\n        0xa1, 0xd1, 0x63, 0x87, 0x75, 0xa4, 0xb7, 0x9f,\n        0xdd, 0xf5, 0xef, 0x5e, 0xf8, 0x76, 0x1f, 0xb2\n    };\n    // 16 bytes\n    unsigned char iv[16] = {\n        0x8e, 0xf3, 0xd9, 0xef, 0x4f, 0x4a, 0x5b, 0x6c,\n        0x2e, 0x4b, 0x0a, 0x8f, 0x9d, 0xbf, 0x1a, 0x12\n    };\n    unsigned char ciphertext[2048];\n\n    aes256_encrypt(message, key, iv, ciphertext);\n\n    // Print the encrypted message\n    for (int i = 0; i < sizeof(ciphertext); i++) {\n        printf(\"%02x\", ciphertext[i]);\n    }\n    printf(\"\\n\");\n\n    return 0;\n}",
+    "cwe_id": "CWE-798",
+    "cwe_name": "Use of Hard-coded Credentials",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-798-212",
+    "name": "CASTLE-798-2.c",
+    "code": "#include <stdio.h>\n#include <string.h>\n\nint main(int argc, char **argv)\n{\n    char password[15];\n    int grant = 0;\n    printf(\"Enter your password: \");\n    fgets(password, sizeof(password), stdin);\n    if (strcmp(password, \"TopSecret!\") == 0) grant=1;\n    if (grant)\n    {\n        printf(\"Access granted\\n\");\n        printf(\"Please visit: /dashboards for next instructions\\n\");\n    }\n    else\n    {\n        printf(\"\\nAccess denied\\n\");\n    }\n    return 0;\n}",
+    "cwe_id": "CWE-798",
+    "cwe_name": "Use of Hard-coded Credentials",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-798-213",
+    "name": "CASTLE-798-3.c",
+    "code": "#include <mysql/mysql.h>\n#include <stdio.h>\n#include <stdlib.h>\n\nint main() {\n    MYSQL *conn;\n    MYSQL_RES *res;\n    MYSQL_ROW row;\n\n    // Credentials\n    const char *server = \"192.168.0.166\";\n    const char *user = \"www-user\";\n    const char *password = \"F7Kl009SamH53\";\n    const char *database = \"tokenstore\";\n\n    // Initialize MySQL connection\n    conn = mysql_init(NULL);\n    if (conn == NULL) {\n        printf(\"Failed to allocate memory.\\n\");\n        return 1; // Indicate error and exit\n    }\n\n    // Connect to database\n    if (!mysql_real_connect(conn, server, user, password, database, 0, NULL, 0)) {\n        fprintf(stderr, \"Connection failed: %s\\n\", mysql_error(conn));\n        return 1;\n    }\n\n    // Send SQL query\n    if (mysql_query(conn, \"SELECT id, token FROM tokens\")) {\n        fprintf(stderr, \"Query failed: %s\\n\", mysql_error(conn));\n        return 1;\n    }\n\n    // Store the result\n    res = mysql_store_result(conn);\n\n    // Output the result row by row\n    int num_fields = mysql_num_fields(res);\n    while ((row = mysql_fetch_row(res))) {\n        unsigned long *lengths;\n        lengths = mysql_fetch_lengths(res);\n        for(int i = 0; i < num_fields; i++) {\n            printf(\"[%.*s] \", (int) lengths[i],\n                    row[i] ? row[i] : \"NULL\");\n        }\n        printf(\"\\n\");\n    }\n\n    // Clean up\n    mysql_free_result(res);\n    mysql_close(conn);\n\n    return 0;\n}",
+    "cwe_id": "CWE-798",
+    "cwe_name": "Use of Hard-coded Credentials",
+    "has_vulnerability": true,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-798-217",
+    "name": "CASTLE-798-7.c",
+    "code": "#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <curl/curl.h>\n#include <openssl/hmac.h>\n#include <openssl/sha.h>\n#include <time.h>\n\n// Constants for S3 request\nconst char *bucket_name = \"gd58sz08-production\";\nconst char *region = \"us-east-1\";\n\n// Function to generate the current timestamp in AWS format\nvoid get_amz_date(char *amz_date, char *date_stamp) {\n    time_t t = time(NULL);\n    struct tm *tm_info = gmtime(&t);\n\n    strftime(amz_date, 17, \"%Y%m%dT%H%M%SZ\", tm_info);  // amz_date format: YYYYMMDD'T'HHMMSS'Z'\n    strftime(date_stamp, 9, \"%Y%m%d\", tm_info);         // date_stamp format: YYYYMMDD\n}\n\n// Function to create HMAC SHA256\nvoid hmac_sha256(const char *key, const char *data, unsigned char *hmac_result) {\n    unsigned int len = 32;\n    HMAC(EVP_sha256(), key, strlen(key), (unsigned char*)data, strlen(data), hmac_result, &len);\n}\n\n// Function to calculate the AWS Signature\nvoid calculate_signature(const char *string_to_sign, const char *secret_key, const char *date_stamp, const char *region, char *signature) {\n    unsigned char k_date[32], k_region[32], k_service[32], k_signing[32], hmac_result[32];\n    char date_key[64];\n\n    snprintf(date_key, sizeof(date_key), \"AWS4%s\", secret_key);\n    hmac_sha256(date_key, date_stamp, k_date);\n    hmac_sha256((char*)k_date, region, k_region);\n    hmac_sha256((char*)k_region, \"s3\", k_service);\n    hmac_sha256((char*)k_service, \"aws4_request\", k_signing);\n    hmac_sha256((char*)k_signing, string_to_sign, hmac_result);\n\n    for (int i = 0; i < 32; i++) {\n        sprintf(&signature[i * 2], \"%02x\", (unsigned int)hmac_result[i]);\n    }\n\n    signature[64] = '\\0';\n}\n\n// Callback to handle response data from libcurl\nsize_t write_callback(void *ptr, size_t size, size_t nmemb, void *userdata) {\n    fwrite(ptr, size, nmemb, stdout);  // Print the response to stdout\n    return size * nmemb;\n}\n\nint main() {\n    const char *access_key = getenv(\"AWS_ACCESS_KEY_ID\");\n    const char *secret_key = getenv(\"AWS_SECRET_ACCESS_KEY\");\n    if (access_key == NULL || secret_key == NULL) {\n        return 1;\n    }\n\n    char amz_date[17], date_stamp[9];\n    get_amz_date(amz_date, date_stamp);\n\n    // Create the canonical request\n    char canonical_request[1024];\n    snprintf(canonical_request, sizeof(canonical_request),\n             \"GET\\n\"\n             \"/%s\\n\"\n             \"\\n\"\n             \"host:%s.s3.%s.amazonaws.com\\n\"\n             \"x-amz-date:%s\\n\"\n             \"\\n\"\n             \"host;x-amz-date\\n\"\n             \"UNSIGNED-PAYLOAD\",\n             bucket_name, bucket_name, region, amz_date);\n\n    // Create the string to sign\n    char string_to_sign[1024];\n    snprintf(string_to_sign, sizeof(string_to_sign),\n             \"AWS4-HMAC-SHA256\\n\"\n             \"%s\\n\"\n             \"%s/%s/s3/aws4_request\\n\"\n             \"UNSIGNED-PAYLOAD\",\n             amz_date, date_stamp, region);\n\n    // Calculate the signature\n    char signature[65];\n    calculate_signature(string_to_sign, secret_key, date_stamp, region, signature);\n\n    // Create the authorization header\n    char authorization_header[1024];\n    snprintf(authorization_header, sizeof(authorization_header),\n             \"AWS4-HMAC-SHA256 Credential=%s/%s/%s/s3/aws4_request, SignedHeaders=host;x-amz-date, Signature=%s\",\n             access_key, date_stamp, region, signature);\n\n    // Prepare the request URL\n    char url[256];\n    snprintf(url, sizeof(url), \"https://%s.s3.%s.amazonaws.com\", bucket_name, region);\n\n    // Initialize CURL\n    CURL *curl = curl_easy_init();\n    if (curl) {\n        struct curl_slist *headers = NULL;\n        headers = curl_slist_append(headers, \"Content-Type: application/xml\");\n        headers = curl_slist_append(headers, authorization_header);  // Add Authorization header\n        headers = curl_slist_append(headers, amz_date);              // Add x-amz-date header\n\n        curl_easy_setopt(curl, CURLOPT_URL, url);\n        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);\n        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);\n\n        // Perform the request\n        CURLcode res = curl_easy_perform(curl);\n        if (res != CURLE_OK) {\n            fprintf(stderr, \"curl_easy_perform() failed: %s\\n\", curl_easy_strerror(res));\n        }\n\n        // Clean up\n        curl_slist_free_all(headers);\n        curl_easy_cleanup(curl);\n    }\n\n    return 0;\n}",
+    "cwe_id": "CWE-798",
+    "cwe_name": "Use of Hard-coded Credentials",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  },
+  {
+    "id": "CASTLE-CWE-798-218",
+    "name": "CASTLE-798-8.c",
+    "code": "#include <stdio.h>\n#include <sqlite3.h>\n#include <string.h>\n#include <ctype.h>\n#include <openssl/evp.h>\n#include <openssl/err.h>\n\n#define SQLITE_FILE \"users.db\"\n\n// test\n// create table users (id INT, username VARCHAR(32), password VARCHAR(64), salt VARCHAR(32), admin INT, token VARCHAR(16));\n// insert into users values (1, \"tom\", \"password\", \"73506dfa3f5ac4829e873992220c3d70\", 1, \"x7KJg7gd8CyqjEpjbcwq9fbfj97fqWw3\");\n\nvoid replace_newline(char *str) {\n    while (*str) {\n        if (*str == '\\n') {\n            *str = '\\0';\n            break;\n        }\n        str++;\n    }\n}\n\nint isValidUsername(char *input) {\n    for (int i = 0; i < strlen(input); i++) {\n        if (!isalpha(input[i])) {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nint isValidPassword(char *input) {\n    for (int i = 0; i < strlen(input); i++) {\n        if (!isalpha(input[i]) && !isdigit(input[i])) {\n            return 0;\n        }\n    }\n    return 1;\n}\n\nvoid sha256_hash_string(unsigned char hash[EVP_MAX_MD_SIZE], char outputBuffer[65], unsigned int hash_len) {\n    for (unsigned int i = 0; i < hash_len; i++) {\n        sprintf(outputBuffer + (i * 2), \"%02x\", hash[i]);\n    }\n    outputBuffer[hash_len * 2] = '\\0';\n}\n\nvoid sha256(const char *str, char outputBuffer[65]) {\n    EVP_MD_CTX *mdctx;\n    const EVP_MD *md;\n    unsigned char hash[EVP_MAX_MD_SIZE];\n    unsigned int hash_len;\n\n    md = EVP_sha256();\n    mdctx = EVP_MD_CTX_new();\n\n    if (!mdctx) {\n        printf(\"Error creating EVP_MD_CTX\\n\");\n        return;\n    }\n\n    if (1 != EVP_DigestInit_ex(mdctx, md, NULL)) {\n        printf(\"Error initializing digest\\n\");\n        EVP_MD_CTX_free(mdctx);\n        return;\n    }\n\n    if (1 != EVP_DigestUpdate(mdctx, str, strlen(str))) {\n        printf(\"Error updating digest\\n\");\n        EVP_MD_CTX_free(mdctx);\n        return;\n    }\n\n    if (1 != EVP_DigestFinal_ex(mdctx, hash, &hash_len)) {\n        printf(\"Error finalizing digest\\n\");\n        EVP_MD_CTX_free(mdctx);\n        return;\n    }\n\n    sha256_hash_string(hash, outputBuffer, hash_len);\n    EVP_MD_CTX_free(mdctx);\n}\n\nint main() {\n    sqlite3 *db;\n    int rc;\n    rc = sqlite3_open(SQLITE_FILE, &db);\n\n    if (rc != SQLITE_OK) {\n        fprintf(stderr, \"Cannot open database: %s\\n\", sqlite3_errmsg(db));\n        sqlite3_close(db);\n        return 1;\n    }\n\n    // Prepare an SQL query\n    char username[32];\n    printf(\"Username: \");\n    fgets(username, sizeof(username), stdin);\n    replace_newline(username);\n    if (!isValidUsername(username)) {\n        printf(\"Invalid username!\\n\");\n        return 1;\n    }\n\n    char password[32];\n    printf(\"Password: \");\n    fgets(password, sizeof(password), stdin);\n    replace_newline(password);\n    if (!isValidPassword(password)) {\n        printf(\"Invalid password!\\n\");\n        return 1;\n    }\n\n    char sql[256];\n    snprintf(sql, sizeof(sql), \"SELECT * FROM users WHERE username = '%s'\", username);\n\n    // Compile the SQL query\n    sqlite3_stmt *res;\n    rc = sqlite3_prepare_v2(db, sql, -1, &res, 0);\n    if (rc != SQLITE_OK) {\n        fprintf(stderr, \"Failed to prepare statement: %s\\n\", sqlite3_errmsg(db));\n        sqlite3_close(db);\n        return 1;\n    }\n\n    // Execute SQL query\n    int row_count = 0;\n    while (sqlite3_step(res) == SQLITE_ROW) {\n        row_count++;\n        const unsigned char *storedPassword = sqlite3_column_text(res, 2);\n        const unsigned char *salt = sqlite3_column_text(res, 3);\n        const int isAdmin = sqlite3_column_int(res, 4);\n        const unsigned char *token = sqlite3_column_text(res, 5);\n\n        char digest[65];\n        char saltedPassword[65];\n        snprintf(saltedPassword, sizeof(saltedPassword), \"%s%s\", password, salt);\n        sha256(saltedPassword, digest);\n        if (strcmp(digest, (const char*)storedPassword) != 0) {\n            printf(\"Invalid username or password.\\n\");\n            return 1;\n        }\n\n        printf(\"Login successful.\\n\");\n        if (isAdmin) {\n            printf(\"Admin token: %s\\n\", token);\n            break;\n        }\n    }\n    if (row_count == 0) {\n        printf(\"Invalid username or password.\\n\");\n    }\n\n    // Finalize and clean up\n    sqlite3_finalize(res);\n    sqlite3_close(db);\n\n    return 0;\n}",
+    "cwe_id": "CWE-798",
+    "cwe_name": "Use of Hard-coded Credentials",
+    "has_vulnerability": false,
+    "source": "CASTLE"
+  }
+]

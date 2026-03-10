@@ -1,0 +1,4 @@
+__pycache__/
+.env
+.claude/
+data/castle-raw/
