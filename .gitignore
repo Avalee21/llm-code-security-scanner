@@ -2,3 +2,5 @@ __pycache__/
 .env
 .claude/
 data/castle-raw/
+mlruns/
+mlflow.db

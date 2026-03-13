@@ -48,6 +48,10 @@ def main():
         "--list-golden", action="store_true",
         help="List all available golden set samples and exit",
     )
+    parser.add_argument(
+        "--no-mlflow", action="store_true",
+        help="Disable MLflow experiment tracking for this run",
+    )
     args = parser.parse_args()
 
     if args.list_golden:
@@ -60,6 +64,7 @@ def main():
 
     if args.golden is not None:
         label, code = _load_golden_sample(args.golden)
+        sample_id = args.golden
         print(f"Scanning golden sample: {label}\n")
     else:
         try:
@@ -68,8 +73,11 @@ def main():
         except FileNotFoundError:
             print(f"Error: file not found: {args.file}", file=sys.stderr)
             sys.exit(1)
+        sample_id = None
         print(f"Scanning {args.file} …\n")
-    report = run_pipeline(code)
+
+    track = not args.no_mlflow
+    report = run_pipeline(code, track=track, sample_id=sample_id)
 
     # ── Summary ──────────────────────────────────────────────
     confirmed = [v for v in report.verdicts if v.confirmed]

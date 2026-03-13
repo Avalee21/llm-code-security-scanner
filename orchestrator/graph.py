@@ -1,5 +1,7 @@
+import hashlib
 from typing import TypedDict, Optional
 
+import mlflow
 from langgraph.graph import StateGraph, END
 
 from agents.red_team import run_red_team
@@ -62,11 +64,43 @@ def build_graph() -> StateGraph:
     return graph.compile()
 
 
+# ── MLflow logging ──────────────────────────────────────────────
+
+
+def _log_to_mlflow(report: DebateReport, code: str, sample_id: str | None = None):
+    """Log pipeline metrics and artifacts to MLflow."""
+    confirmed = [v for v in report.verdicts if v.confirmed]
+    dismissed = [v for v in report.verdicts if not v.confirmed]
+
+    mlflow.log_params({
+        "code_sha256": hashlib.sha256(code.encode()).hexdigest()[:16],
+        "sample_id": sample_id or "custom",
+    })
+    mlflow.log_metrics({
+        "findings_count": len(report.findings),
+        "confirmed_count": len(confirmed),
+        "false_positive_count": len(dismissed),
+    })
+    mlflow.log_text(report.model_dump_json(indent=2), "debate_report.json")
+
+
 # ── Public entry point ──────────────────────────────────────────
 
 
-def run_pipeline(code: str) -> DebateReport:
+def run_pipeline(
+    code: str,
+    *,
+    track: bool = True,
+    sample_id: str | None = None,
+) -> DebateReport:
     """Run the full Red → Blue → Judge pipeline and return the debate report."""
     app = build_graph()
     result = app.invoke({"code": code})
-    return result["report"]
+    report = result["report"]
+
+    if track:
+        mlflow.set_experiment("code-security-scanner")
+        with mlflow.start_run():
+            _log_to_mlflow(report, code, sample_id)
+
+    return report
