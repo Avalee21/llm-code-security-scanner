@@ -2,6 +2,8 @@ import argparse
 import json
 import sys
 
+from agents.red_team import run_red_team
+from agents.blue_team import run_blue_team
 from orchestrator.graph import run_pipeline
 
 GOLDEN_SET_PATH = "data/golden_set.json"
@@ -52,6 +54,14 @@ def main():
         "--no-mlflow", action="store_true",
         help="Disable MLflow experiment tracking for this run",
     )
+    parser.add_argument(
+        "--red-only", action="store_true",
+        help="Run only the Red Team agent (no Blue Team, Judge, or MLflow)",
+    )
+    parser.add_argument(
+        "--blue-only", action="store_true",
+        help="Run Red + Blue Team agents only (no Judge or MLflow)",
+    )
     args = parser.parse_args()
 
     if args.list_golden:
@@ -76,6 +86,35 @@ def main():
         sample_id = None
         print(f"Scanning {args.file} …\n")
 
+    # ── Red-only mode ────────────────────────────────────────
+    if args.red_only:
+        findings = run_red_team(code)
+        print(f"Red Team found {len(findings)} finding(s).\n")
+        for f in findings:
+            print(f"  {f.finding_id} [{f.severity}] {f.cwe_id} — {f.cwe_name}")
+            print(f"    Code : {f.vulnerable_code}")
+            print(f"    Argue: {f.exploit_argument}")
+            print()
+        return
+
+    # ── Blue-only mode (Red + Blue, no Judge) ────────────────
+    if args.blue_only:
+        findings = run_red_team(code)
+        print(f"Red Team found {len(findings)} finding(s).")
+        for f in findings:
+            print(f"  {f.finding_id} [{f.severity}] {f.cwe_id} — {f.cwe_name}")
+        print()
+
+        defenses = run_blue_team(findings, code=code)
+        print(f"Blue Team produced {len(defenses)} defense(s).\n")
+        for d in defenses:
+            verdict = "FALSE POSITIVE" if d.is_false_positive else "CONFIRMED"
+            print(f"  {d.finding_id} -> {verdict}")
+            print(f"    Argument: {d.counter_argument}")
+            print()
+        return
+
+    # ── Full pipeline ────────────────────────────────────────
     track = not args.no_mlflow
     report = run_pipeline(code, track=track, sample_id=sample_id)
 

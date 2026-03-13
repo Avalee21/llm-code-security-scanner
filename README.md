@@ -56,6 +56,22 @@ python main.py --golden 0
 python main.py --golden CASTLE-CWE-22-1
 ```
 
+### Demo individual agents
+
+Run only the Red Team (attack) stage:
+
+```bash
+python main.py --golden 0 --red-only
+```
+
+Run Red + Blue Team (attack and defense) without the Judge:
+
+```bash
+python main.py --file code.c --blue-only
+```
+
+These modes skip the Judge, MLflow logging, and evaluation — useful for demos and debugging.
+
 ### Disable MLflow tracking
 
 Append `--no-mlflow` to any scan command:
