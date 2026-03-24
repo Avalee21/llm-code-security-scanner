@@ -1,3 +1,6 @@
+import json
+from unittest.mock import MagicMock, patch
+
 from agents.judge_patcher import run_judge
 from utils.schemas import BlueTeamDefense, JudgeVerdict, RedTeamFinding
 
@@ -25,91 +28,174 @@ def _defense(finding_id: str, is_false_positive: bool) -> BlueTeamDefense:
     )
 
 
+def _mock_response(payload: list[dict]) -> MagicMock:
+    mock = MagicMock()
+    mock.content = json.dumps(payload)
+    return mock
+
+
+def _verdict_payload(finding_id: str, confirmed: bool) -> dict:
+    return {
+        "finding_id": finding_id,
+        "confirmed": confirmed,
+        "reasoning": f"Analysis for {finding_id}",
+        "patch": None,
+    }
+
+
+def _run_with_mock(findings, defenses, code, payload):
+    """Run run_judge with a mocked LLM that returns the given payload."""
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = _mock_response(payload)
+
+    with patch("agents.judge_patcher.ChatGroq"), \
+         patch("agents.judge_patcher.ChatPromptTemplate") as mock_prompt_cls:
+        mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
+        return run_judge(findings, defenses, code)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
 
-def test_judge_all_confirmed():
-    findings = [_finding("F-001"), _finding("F-002")]
-    defenses = [
-        _defense("F-001", is_false_positive=False),
-        _defense("F-002", is_false_positive=False),
-    ]
-    verdicts = run_judge(findings, defenses)
+def test_judge_returns_list_of_verdicts():
+    payload = [_verdict_payload("F-001", True)]
+    result = _run_with_mock(
+        [_finding("F-001")],
+        [_defense("F-001", is_false_positive=False)],
+        "def foo(): pass",
+        payload,
+    )
 
-    assert len(verdicts) == 2
-    assert all(v.confirmed is True for v in verdicts)
-    assert all(v.patch is None for v in verdicts)
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert isinstance(result[0], JudgeVerdict)
+
+
+def test_judge_all_confirmed():
+    payload = [_verdict_payload("F-001", True), _verdict_payload("F-002", True)]
+    result = _run_with_mock(
+        [_finding("F-001"), _finding("F-002")],
+        [_defense("F-001", is_false_positive=False), _defense("F-002", is_false_positive=False)],
+        "def foo(): pass",
+        payload,
+    )
+
+    assert len(result) == 2
+    assert all(v.confirmed is True for v in result)
+    assert all(v.patch is None for v in result)
 
 
 def test_judge_all_false_positive():
-    findings = [_finding("F-001"), _finding("F-002")]
-    defenses = [
-        _defense("F-001", is_false_positive=True),
-        _defense("F-002", is_false_positive=True),
-    ]
-    verdicts = run_judge(findings, defenses)
+    payload = [_verdict_payload("F-001", False), _verdict_payload("F-002", False)]
+    result = _run_with_mock(
+        [_finding("F-001"), _finding("F-002")],
+        [_defense("F-001", is_false_positive=True), _defense("F-002", is_false_positive=True)],
+        "def foo(): pass",
+        payload,
+    )
 
-    assert len(verdicts) == 2
-    assert all(v.confirmed is False for v in verdicts)
+    assert len(result) == 2
+    assert all(v.confirmed is False for v in result)
 
 
 def test_judge_mixed():
-    findings = [_finding("F-001"), _finding("F-002")]
-    defenses = [
-        _defense("F-001", is_false_positive=False),
-        _defense("F-002", is_false_positive=True),
-    ]
-    verdicts = run_judge(findings, defenses)
+    payload = [_verdict_payload("F-001", True), _verdict_payload("F-002", False)]
+    result = _run_with_mock(
+        [_finding("F-001"), _finding("F-002")],
+        [_defense("F-001", is_false_positive=False), _defense("F-002", is_false_positive=True)],
+        "def foo(): pass",
+        payload,
+    )
 
-    assert len(verdicts) == 2
-    verdict_map = {v.finding_id: v for v in verdicts}
+    assert len(result) == 2
+    verdict_map = {v.finding_id: v for v in result}
     assert verdict_map["F-001"].confirmed is True
     assert verdict_map["F-002"].confirmed is False
 
 
 def test_judge_no_defenses():
-    findings = [_finding("F-001"), _finding("F-002"), _finding("F-003")]
-    verdicts = run_judge(findings, defenses=[])
+    payload = [
+        _verdict_payload("F-001", True),
+        _verdict_payload("F-002", True),
+        _verdict_payload("F-003", True),
+    ]
+    result = _run_with_mock(
+        [_finding("F-001"), _finding("F-002"), _finding("F-003")],
+        [],
+        "def foo(): pass",
+        payload,
+    )
 
-    assert len(verdicts) == 3
-    assert all(v.confirmed is True for v in verdicts)
-
-
-def test_judge_mismatched_finding_ids():
-    findings = [_finding("F-001")]
-    defenses = [_defense("F-999", is_false_positive=True)]
-    verdicts = run_judge(findings, defenses)
-
-    assert len(verdicts) == 1
-    assert verdicts[0].finding_id == "F-001"
-    assert verdicts[0].confirmed is True
-
-
-def test_judge_returns_judge_verdict_instances():
-    findings = [_finding("F-001")]
-    defenses = [_defense("F-001", is_false_positive=False)]
-    verdicts = run_judge(findings, defenses)
-
-    assert isinstance(verdicts, list)
-    assert isinstance(verdicts[0], JudgeVerdict)
-
-
-def test_judge_preserves_finding_id_in_verdict():
-    findings = [_finding("F-042")]
-    verdicts = run_judge(findings, defenses=[])
-
-    assert verdicts[0].finding_id == "F-042"
-
-
-def test_judge_reasoning_is_nonempty():
-    findings = [_finding("F-001"), _finding("F-002")]
-    defenses = [_defense("F-001", is_false_positive=True)]
-    verdicts = run_judge(findings, defenses)
-
-    assert all(len(v.reasoning) > 0 for v in verdicts)
+    assert len(result) == 3
+    assert all(v.confirmed is True for v in result)
 
 
 def test_judge_empty_inputs():
-    verdicts = run_judge(findings=[], defenses=[])
+    verdicts = run_judge(findings=[], defenses=[], code="def foo(): pass")
     assert verdicts == []
+
+
+def test_judge_finding_id_preserved():
+    payload = [_verdict_payload("F-042", True)]
+    result = _run_with_mock(
+        [_finding("F-042")],
+        [],
+        "def foo(): pass",
+        payload,
+    )
+
+    assert result[0].finding_id == "F-042"
+
+
+def test_judge_reasoning_is_nonempty():
+    payload = [_verdict_payload("F-001", True), _verdict_payload("F-002", False)]
+    result = _run_with_mock(
+        [_finding("F-001"), _finding("F-002")],
+        [_defense("F-001", is_false_positive=False)],
+        "def foo(): pass",
+        payload,
+    )
+
+    assert all(len(v.reasoning) > 0 for v in result)
+
+
+def test_judge_markdown_fence_stripped():
+    raw_payload = [_verdict_payload("F-001", True)]
+    fenced = "```json\n" + json.dumps(raw_payload) + "\n```"
+
+    mock_response = MagicMock()
+    mock_response.content = fenced
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = mock_response
+
+    with patch("agents.judge_patcher.ChatGroq"), \
+         patch("agents.judge_patcher.ChatPromptTemplate") as mock_prompt_cls:
+        mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
+        result = run_judge(
+            [_finding("F-001")],
+            [_defense("F-001", is_false_positive=False)],
+            "def foo(): pass",
+        )
+
+    assert len(result) == 1
+    assert result[0].finding_id == "F-001"
+    assert result[0].confirmed is True
+
+
+def test_judge_missing_verdict_gets_default():
+    # LLM only returns verdict for F-001, not F-002
+    payload = [_verdict_payload("F-001", False)]
+    result = _run_with_mock(
+        [_finding("F-001"), _finding("F-002")],
+        [_defense("F-001", is_false_positive=True), _defense("F-002", is_false_positive=False)],
+        "def foo(): pass",
+        payload,
+    )
+
+    assert len(result) == 2
+    verdict_map = {v.finding_id: v for v in result}
+    assert verdict_map["F-001"].confirmed is False
+    # F-002 should get default confirmed=True since LLM didn't return it
+    assert verdict_map["F-002"].confirmed is True
+    assert "default" in verdict_map["F-002"].reasoning.lower()

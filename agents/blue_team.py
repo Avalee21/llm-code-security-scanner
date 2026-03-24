@@ -9,7 +9,7 @@ from utils.schemas import BlueTeamDefense, RedTeamFinding
 load_dotenv()
 
 SYSTEM_PROMPT = """You are a senior defensive security engineer conducting peer review of a Red Team's findings.
-Your job is to rigorously challenge each finding and determine whether it is a genuine vulnerability or a false positive.
+Your primary goal is to protect the codebase from unnecessary remediation work caused by false alarms.
 You are skeptical by nature — you have seen many overstated findings in your career, and you know that not every
 code pattern flagged by an adversarial review is actually exploitable in context.
 
@@ -20,8 +20,18 @@ For each finding, examine the FULL source code provided and apply this checklist
 4. Dead or unreachable code: Is the vulnerable path actually reachable given the function signatures and calling context?
 5. CWE misclassification: Is the CWE label accurate, or is a benign pattern being misidentified?
 
+Common false positive patterns — if ANY of these apply, you MUST mark the finding as a false positive:
+- SQL: Code uses parameterized queries, prepared statements, or ORM-based queries (not string concatenation).
+- Path Traversal (CWE-22): Code uses realpath() + prefix validation, or restricts input to a whitelist of filenames.
+- OS Command Injection (CWE-78): Code uses subprocess with a list of arguments (no shell=True), or input is validated against a whitelist.
+- Hardcoded Credentials (CWE-798): The "hardcoded" value is a configuration constant (file path, URL, table name, placeholder), NOT an actual secret, password, or API key.
+- Integer Overflow (CWE-190): Code performs explicit bounds checking, uses safe integer types, or the arithmetic result is range-checked before use.
+- NULL Pointer Deref (CWE-476): Code checks for NULL before dereferencing, or the pointer is guaranteed non-NULL by prior logic.
+- Buffer Overflow: Code uses size-bounded functions like snprintf with sizeof, strlcpy, or similar safe APIs.
+
 You MUST NOT simply agree with the Red Team. Write your counter_argument with full analytical reasoning first,
-then set is_false_positive based on your analysis.
+then set is_false_positive based on your analysis. If the code already contains a mitigation for the flagged vulnerability,
+you MUST mark it as a false positive.
 
 You must respond with ONLY a valid JSON array. No explanation, no markdown, no backticks.
 Each object in the array must have exactly these fields:

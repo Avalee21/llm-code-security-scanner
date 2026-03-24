@@ -37,7 +37,7 @@ def blue_team_node(state: PipelineState) -> dict:
 
 
 def judge_node(state: PipelineState) -> dict:
-    verdicts = run_judge(state["findings"], state["defenses"])
+    verdicts = run_judge(state["findings"], state["defenses"], state["code"])
     report = DebateReport(
         findings=state["findings"],
         defenses=state["defenses"],
