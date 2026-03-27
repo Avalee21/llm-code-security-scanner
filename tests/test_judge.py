@@ -48,7 +48,7 @@ def _run_with_mock(findings, defenses, code, payload):
     mock_chain = MagicMock()
     mock_chain.invoke.return_value = _mock_response(payload)
 
-    with patch("agents.judge_patcher.ChatGroq"), \
+    with patch("agents.judge_patcher.get_llm"), \
          patch("agents.judge_patcher.ChatPromptTemplate") as mock_prompt_cls:
         mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
         return run_judge(findings, defenses, code)
@@ -169,7 +169,7 @@ def test_judge_markdown_fence_stripped():
     mock_chain = MagicMock()
     mock_chain.invoke.return_value = mock_response
 
-    with patch("agents.judge_patcher.ChatGroq"), \
+    with patch("agents.judge_patcher.get_llm"), \
          patch("agents.judge_patcher.ChatPromptTemplate") as mock_prompt_cls:
         mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
         result = run_judge(

@@ -30,7 +30,7 @@ def _run_with_mock(findings, code, payload):
     mock_chain = MagicMock()
     mock_chain.invoke.return_value = _mock_response(payload)
 
-    with patch("agents.blue_team.ChatGroq"), \
+    with patch("agents.blue_team.get_llm"), \
          patch("agents.blue_team.ChatPromptTemplate") as mock_prompt_cls:
         mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
         return run_blue_team(findings, code)
@@ -100,7 +100,7 @@ def test_markdown_fence_stripped():
     mock_chain = MagicMock()
     mock_chain.invoke.return_value = mock_response
 
-    with patch("agents.blue_team.ChatGroq"), \
+    with patch("agents.blue_team.get_llm"), \
          patch("agents.blue_team.ChatPromptTemplate") as mock_prompt_cls:
         mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
         result = run_blue_team([_finding("F-001")], code="def foo(): pass")

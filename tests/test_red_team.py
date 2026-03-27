@@ -19,7 +19,7 @@ def _run_with_mock(code: str, payload: list[dict]):
     mock_chain = MagicMock()
     mock_chain.invoke.return_value = _mock_response(payload)
 
-    with patch("agents.red_team.ChatGroq"), \
+    with patch("agents.red_team.get_llm"), \
          patch("agents.red_team.ChatPromptTemplate") as mock_prompt_cls:
         mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
         return run_red_team(code)
@@ -85,7 +85,7 @@ def test_markdown_fence_stripped():
     mock_chain = MagicMock()
     mock_chain.invoke.return_value = mock_response
 
-    with patch("agents.red_team.ChatGroq"), \
+    with patch("agents.red_team.get_llm"), \
          patch("agents.red_team.ChatPromptTemplate") as mock_prompt_cls:
         mock_prompt_cls.from_messages.return_value.__or__ = lambda self, other: mock_chain
         result = run_red_team("def foo(): pass")
