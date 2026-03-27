@@ -19,7 +19,7 @@ image = (
     .run_function(download_model)
 )
 
-app = modal.App("security-scanner-vllm")
+app = modal.App("vllm")
 
 
 @app.function(

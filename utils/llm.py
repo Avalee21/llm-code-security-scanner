@@ -13,7 +13,7 @@ from langchain_core.language_models import BaseChatModel
 
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-LLM_MODEL_GROQ = "llama-3.3-70b-versatile"
+LLM_MODEL_GROQ = "meta-llama/llama-4-scout-17b-16e-instruct"
 LLM_MODEL_MODAL = "Qwen/Qwen2.5-Coder-32B-Instruct-AWQ"
 
 
