@@ -280,3 +280,74 @@ def test_compute_metrics_cwe_matched_agrees_when_correct():
     assert m.recall == m.cwe_recall == 1.0
     assert m.sample_results[0]["classification"] == "TP"
     assert m.sample_results[0]["findings_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Per-finding metrics tests
+# ---------------------------------------------------------------------------
+
+def test_finding_precision_all_correct():
+    """All confirmed findings have the correct CWE → finding_precision = 1.0."""
+    results = [
+        _sample("s1", "CWE-22", True, _report(confirmed_ids=["F-001"], cwe="CWE-22")),
+        _sample("s2", "CWE-22", True, _report(confirmed_ids=["F-001"], cwe="CWE-22")),
+    ]
+    m = compute_metrics(results)
+    assert m.total_findings == 2
+    assert m.total_confirmed == 2
+    assert m.cwe_matched_confirmed == 2
+    assert m.finding_precision == 1.0
+
+
+def test_finding_precision_all_wrong():
+    """All confirmed findings have wrong CWE → finding_precision = 0.0."""
+    wrong_report = _report(confirmed_ids=["F-001"], cwe="CWE-89")
+    s1 = SampleResult(
+        sample_id="s1", cwe_id="CWE-22", has_vulnerability=True,
+        flagged=True, report=wrong_report, cwe_flagged=False,
+    )
+    m = compute_metrics([s1])
+    assert m.total_confirmed == 1
+    assert m.cwe_matched_confirmed == 0
+    assert m.finding_precision == 0.0
+
+
+def test_finding_precision_mixed():
+    """2 confirmed findings: 1 correct CWE, 1 wrong → finding_precision = 0.5."""
+    findings = [_finding("F-001", cwe="CWE-22"), _finding("F-002", cwe="CWE-89")]
+    defenses = [
+        BlueTeamDefense(finding_id="F-001", is_false_positive=False, counter_argument="c"),
+        BlueTeamDefense(finding_id="F-002", is_false_positive=False, counter_argument="c"),
+    ]
+    verdicts = [_verdict("F-001", True), _verdict("F-002", True)]
+    report = DebateReport(findings=findings, defenses=defenses, verdicts=verdicts)
+
+    flagged, _, cwe_flagged, _ = classify_sample(report, True, "CWE-22")
+    s1 = SampleResult(
+        sample_id="s1", cwe_id="CWE-22", has_vulnerability=True,
+        flagged=flagged, report=report, cwe_flagged=cwe_flagged,
+    )
+    m = compute_metrics([s1])
+    assert m.total_findings == 2
+    assert m.total_confirmed == 2
+    assert m.cwe_matched_confirmed == 1
+    assert m.finding_precision == 0.5
+
+
+def test_finding_precision_no_confirmed():
+    """No confirmed findings → finding_precision stays 0.0."""
+    results = [
+        _sample("s1", "CWE-22", False, _report()),
+    ]
+    m = compute_metrics(results)
+    assert m.total_confirmed == 0
+    assert m.finding_precision == 0.0
+
+
+def test_sample_results_include_cwe_matched_confirmed():
+    """Per-sample record includes cwe_matched_confirmed_count."""
+    results = [
+        _sample("s1", "CWE-22", True, _report(confirmed_ids=["F-001"], cwe="CWE-22")),
+    ]
+    m = compute_metrics(results)
+    assert m.sample_results[0]["cwe_matched_confirmed_count"] == 1

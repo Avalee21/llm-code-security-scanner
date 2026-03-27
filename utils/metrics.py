@@ -39,6 +39,12 @@ class EvalMetrics:
     cwe_f1: float = 0.0
     cwe_false_positive_rate: float = 0.0
 
+    # Per-finding metrics (how noisy is the Red Team?)
+    total_findings: int = 0
+    total_confirmed: int = 0
+    cwe_matched_confirmed: int = 0
+    finding_precision: float = 0.0  # cwe_matched_confirmed / total_confirmed
+
     per_cwe: dict[str, dict] = field(default_factory=dict)
     sample_results: list[dict] = field(default_factory=list)
 
@@ -125,6 +131,18 @@ def compute_metrics(results: list[SampleResult]) -> EvalMetrics:
         per_cwe[r.cwe_id][classification.lower()] += 1
         per_cwe[r.cwe_id][f"cwe_{cwe_classification.lower()}"] += 1
 
+        # Per-finding counts
+        cwe_by_finding = {f.finding_id: f.cwe_id for f in r.report.findings}
+        n_findings = len(r.report.findings)
+        n_confirmed = sum(1 for v in r.report.verdicts if v.confirmed)
+        n_cwe_matched = sum(
+            1 for v in r.report.verdicts
+            if v.confirmed and cwe_by_finding.get(v.finding_id) == r.cwe_id
+        )
+        metrics.total_findings += n_findings
+        metrics.total_confirmed += n_confirmed
+        metrics.cwe_matched_confirmed += n_cwe_matched
+
         # Per-sample record
         metrics.sample_results.append({
             "sample_id": r.sample_id,
@@ -134,8 +152,9 @@ def compute_metrics(results: list[SampleResult]) -> EvalMetrics:
             "classification": classification,
             "cwe_flagged": r.cwe_flagged,
             "cwe_classification": cwe_classification,
-            "findings_count": len(r.report.findings),
-            "confirmed_count": sum(1 for v in r.report.verdicts if v.confirmed),
+            "findings_count": n_findings,
+            "confirmed_count": n_confirmed,
+            "cwe_matched_confirmed_count": n_cwe_matched,
         })
 
     # Aggregate rates
@@ -157,6 +176,10 @@ def compute_metrics(results: list[SampleResult]) -> EvalMetrics:
         metrics.cwe_f1 = 2 * metrics.cwe_precision * metrics.cwe_recall / (metrics.cwe_precision + metrics.cwe_recall)
     if metrics.cwe_fp + metrics.cwe_tn > 0:
         metrics.cwe_false_positive_rate = metrics.cwe_fp / (metrics.cwe_fp + metrics.cwe_tn)
+
+    # Per-finding precision
+    if metrics.total_confirmed > 0:
+        metrics.finding_precision = metrics.cwe_matched_confirmed / metrics.total_confirmed
 
     # Per-CWE rates
     for cwe_id, counts in per_cwe.items():

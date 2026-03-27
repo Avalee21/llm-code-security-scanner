@@ -74,6 +74,12 @@ def run_evaluation():
     print(f"  False Positive Rate: {metrics.cwe_false_positive_rate:.3f}")
     print(f"  TP={metrics.cwe_tp}  FP={metrics.cwe_fp}  TN={metrics.cwe_tn}  FN={metrics.cwe_fn}")
 
+    print(f"\n  Per-Finding Metrics (how noisy is the Red Team?):")
+    print(f"  Total findings     : {metrics.total_findings}")
+    print(f"  Confirmed          : {metrics.total_confirmed}")
+    print(f"  CWE-matched        : {metrics.cwe_matched_confirmed}")
+    print(f"  Finding precision  : {metrics.finding_precision:.3f}")
+
     print(f"\nPer-CWE breakdown:")
     for cwe_id, cwe in sorted(metrics.per_cwe.items()):
         print(f"  {cwe_id}: P={cwe['precision']:.2f} R={cwe['recall']:.2f} F1={cwe['f1']:.2f}  "
@@ -107,6 +113,10 @@ def run_evaluation():
             "cwe_fp": metrics.cwe_fp,
             "cwe_tn": metrics.cwe_tn,
             "cwe_fn": metrics.cwe_fn,
+            "total_findings": metrics.total_findings,
+            "total_confirmed": metrics.total_confirmed,
+            "cwe_matched_confirmed": metrics.cwe_matched_confirmed,
+            "finding_precision": metrics.finding_precision,
         })
         mlflow.log_text(
             json.dumps(metrics.sample_results, indent=2),
