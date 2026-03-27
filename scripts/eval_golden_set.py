@@ -30,7 +30,9 @@ def run_evaluation():
         sample_id = sample["id"]
         try:
             report = run_pipeline(sample["code"], track=False)
-            flagged, classification = classify_sample(report, sample["has_vulnerability"])
+            flagged, classification, cwe_flagged, cwe_cls = classify_sample(
+                report, sample["has_vulnerability"], sample["cwe_id"],
+            )
 
             results.append(SampleResult(
                 sample_id=sample_id,
@@ -38,6 +40,7 @@ def run_evaluation():
                 has_vulnerability=sample["has_vulnerability"],
                 flagged=flagged,
                 report=report,
+                cwe_flagged=cwe_flagged,
             ))
 
             truth = "VULN" if sample["has_vulnerability"] else "SAFE"
@@ -64,10 +67,19 @@ def run_evaluation():
     print(f"  False Positive Rate: {metrics.false_positive_rate:.3f}")
     print(f"  TP={metrics.tp}  FP={metrics.fp}  TN={metrics.tn}  FN={metrics.fn}")
 
+    print(f"\n  CWE-Matched Metrics (only correct vulnerability type counts as TP):")
+    print(f"  Precision          : {metrics.cwe_precision:.3f}")
+    print(f"  Recall             : {metrics.cwe_recall:.3f}")
+    print(f"  F1 Score           : {metrics.cwe_f1:.3f}")
+    print(f"  False Positive Rate: {metrics.cwe_false_positive_rate:.3f}")
+    print(f"  TP={metrics.cwe_tp}  FP={metrics.cwe_fp}  TN={metrics.cwe_tn}  FN={metrics.cwe_fn}")
+
     print(f"\nPer-CWE breakdown:")
     for cwe_id, cwe in sorted(metrics.per_cwe.items()):
         print(f"  {cwe_id}: P={cwe['precision']:.2f} R={cwe['recall']:.2f} F1={cwe['f1']:.2f}  "
               f"(TP={cwe['tp']} FP={cwe['fp']} TN={cwe['tn']} FN={cwe['fn']})")
+        print(f"    CWE-matched: P={cwe['cwe_precision']:.2f} R={cwe['cwe_recall']:.2f} F1={cwe['cwe_f1']:.2f}  "
+              f"(TP={cwe['cwe_tp']} FP={cwe['cwe_fp']} TN={cwe['cwe_tn']} FN={cwe['cwe_fn']})")
 
     # ── Log to MLflow ────────────────────────────────────────
     mlflow.set_experiment("code-security-scanner")
@@ -87,6 +99,14 @@ def run_evaluation():
             "fp": metrics.fp,
             "tn": metrics.tn,
             "fn": metrics.fn,
+            "cwe_precision": metrics.cwe_precision,
+            "cwe_recall": metrics.cwe_recall,
+            "cwe_f1": metrics.cwe_f1,
+            "cwe_false_positive_rate": metrics.cwe_false_positive_rate,
+            "cwe_tp": metrics.cwe_tp,
+            "cwe_fp": metrics.cwe_fp,
+            "cwe_tn": metrics.cwe_tn,
+            "cwe_fn": metrics.cwe_fn,
         })
         mlflow.log_text(
             json.dumps(metrics.sample_results, indent=2),
