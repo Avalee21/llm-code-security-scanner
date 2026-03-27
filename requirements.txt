@@ -2,6 +2,7 @@ langgraph
 langchain
 langchain-core
 langchain-groq
+langchain-openai
 pydantic
 mlflow
 streamlit

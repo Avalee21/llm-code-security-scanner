@@ -2,8 +2,8 @@ import json
 import os
 import re
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
+from utils.llm import get_llm
 from utils.schemas import RedTeamFinding
 
 load_dotenv()
@@ -31,11 +31,7 @@ USER_PROMPT = """Review this code for security vulnerabilities:
 """
 
 def run_red_team(code: str) -> list[RedTeamFinding]:
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        temperature=0.2,
-        api_key=os.getenv("GROQ_API_KEY")
-    )
+    llm = get_llm()
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", SYSTEM_PROMPT),
