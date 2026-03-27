@@ -1,5 +1,11 @@
-"""Batch evaluation: run the full pipeline on all golden set samples and log to MLflow."""
+"""Batch evaluation: run the full pipeline on golden set samples and log to MLflow.
 
+Usage:
+    python -m scripts.eval_golden_set              # all 30 samples
+    python -m scripts.eval_golden_set --limit 10    # first 10 samples
+"""
+
+import argparse
 import json
 import sys
 import time
@@ -17,8 +23,10 @@ def load_golden_set() -> list[dict]:
         return json.load(f)
 
 
-def run_evaluation():
+def run_evaluation(limit: int | None = None):
     samples = load_golden_set()
+    if limit is not None:
+        samples = samples[:limit]
     results: list[SampleResult] = []
     errors: list[str] = []
 
@@ -133,4 +141,8 @@ def run_evaluation():
 
 
 if __name__ == "__main__":
-    run_evaluation()
+    parser = argparse.ArgumentParser(description="Evaluate golden set samples.")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="Only evaluate the first N samples (default: all)")
+    args = parser.parse_args()
+    run_evaluation(limit=args.limit)
