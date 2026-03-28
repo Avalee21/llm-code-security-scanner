@@ -6,6 +6,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -13,6 +14,7 @@ import time
 import mlflow
 
 from orchestrator.graph import run_pipeline
+from utils.llm import get_llm_info
 from utils.metrics import SampleResult, classify_sample, compute_metrics
 
 GOLDEN_SET_PATH = "data/golden_set.json"
@@ -96,6 +98,12 @@ def run_evaluation(limit: int | None = None):
               f"(TP={cwe['cwe_tp']} FP={cwe['cwe_fp']} TN={cwe['cwe_tn']} FN={cwe['cwe_fn']})")
 
     # ── Log to MLflow ────────────────────────────────────────
+    from agents.red_team import SYSTEM_PROMPT as RED_PROMPT
+    from agents.blue_team import SYSTEM_PROMPT as BLUE_PROMPT
+    from agents.judge_patcher import SYSTEM_PROMPT as JUDGE_PROMPT
+
+    llm_info = get_llm_info()
+
     mlflow.set_experiment("code-security-scanner")
     with mlflow.start_run(run_name="golden-set-eval"):
         mlflow.log_params({
@@ -103,6 +111,12 @@ def run_evaluation(limit: int | None = None):
             "eval_set_size": len(samples),
             "completed": len(results),
             "errors": len(errors),
+            "method": "debate-pipeline",
+            "llm_backend": llm_info["llm_backend"],
+            "llm_model": llm_info["llm_model"],
+            "prompt_red_sha": hashlib.sha256(RED_PROMPT.encode()).hexdigest()[:12],
+            "prompt_blue_sha": hashlib.sha256(BLUE_PROMPT.encode()).hexdigest()[:12],
+            "prompt_judge_sha": hashlib.sha256(JUDGE_PROMPT.encode()).hexdigest()[:12],
         })
         mlflow.log_metrics({
             "precision": metrics.precision,
