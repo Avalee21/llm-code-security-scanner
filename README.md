@@ -55,7 +55,7 @@ Point the scanner at any GitHub PR or commit URL — it fetches the diff, extrac
 python main.py --pr https://github.com/Avalee21/vulnerable-code-demo/pull/1
 
 # Scan a specific commit
-python main.py --commit python main.py --commit https://github.com/Avalee21/vulnerable-code-demo/commit/875bcbbf97463462cf8feb3fef1b8ee34785c7e1
+python main.py --commit https://github.com/Avalee21/vulnerable-code-demo/commit/875bcbbf97463462cf8feb3fef1b8ee34785c7e1
 ```
 
 For private repositories, provide a GitHub token:
@@ -110,6 +110,22 @@ Append `--no-mlflow` to any scan command:
 python main.py --file code.c --no-mlflow
 ```
 
+## Web Dashboard
+
+Launch the interactive Streamlit dashboard:
+
+```bash
+streamlit run app.py
+```
+
+Open http://localhost:8502 in your browser. The dashboard provides three modes:
+
+- **Paste Code** — paste any source code and scan it
+- **GitHub PR / Commit** — enter a GitHub URL to scan only the changed lines
+- **Golden Set** — pick a sample from the curated test set and compare results against ground truth
+
+Each scan shows the full adversarial debate: Red Team findings, Blue Team defenses, and Judge verdicts with expandable reasoning.
+
 ## Batch Evaluation
 
 Run the full debate pipeline on golden set samples and log aggregate metrics to MLflow:
@@ -162,6 +178,7 @@ Tests mock all LLM calls so no API key is needed.
 ## Project Structure
 
 ```
+app.py                     Streamlit web dashboard
 main.py                    CLI entry point
 orchestrator/graph.py      LangGraph pipeline wiring + MLflow logging
 agents/
