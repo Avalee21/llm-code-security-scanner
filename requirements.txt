@@ -8,3 +8,4 @@ mlflow
 streamlit
 python-dotenv
 pytest
+requests

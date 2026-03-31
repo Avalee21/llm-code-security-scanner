@@ -4,7 +4,13 @@ import sys
 
 from agents.red_team import run_red_team
 from agents.blue_team import run_blue_team
-from orchestrator.graph import run_pipeline
+from orchestrator.graph import run_pipeline, run_repo_scan
+from utils.github import (
+    parse_github_url,
+    fetch_diffs_for_target,
+    fetch_file_content,
+    extract_diff_context,
+)
 
 GOLDEN_SET_PATH = "data/golden_set.json"
 
@@ -50,6 +56,18 @@ def main():
         "--list-golden", action="store_true",
         help="List all available golden set samples and exit",
     )
+    group.add_argument(
+        "--pr", metavar="URL",
+        help="Scan a GitHub pull request diff (e.g. https://github.com/owner/repo/pull/123)",
+    )
+    group.add_argument(
+        "--commit", metavar="URL",
+        help="Scan a GitHub commit diff (e.g. https://github.com/owner/repo/commit/abc123)",
+    )
+    parser.add_argument(
+        "--github-token",
+        help="GitHub personal access token (or set GITHUB_TOKEN env var)",
+    )
     parser.add_argument(
         "--no-mlflow", action="store_true",
         help="Disable MLflow experiment tracking for this run",
@@ -70,6 +88,90 @@ def main():
         for i, s in enumerate(samples):
             vuln = "VULNERABLE" if s["has_vulnerability"] else "SAFE"
             print(f"  [{i:2d}] {s['id']:<25s} {s['cwe_id']} {s['cwe_name']:<30s} {vuln}")
+        return
+
+    # ── GitHub PR / commit diff mode ─────────────────────────
+    if args.pr or args.commit:
+        url = args.pr or args.commit
+        token = args.github_token
+        track = not args.no_mlflow
+
+        target = parse_github_url(url)
+        print(f"Fetching diff from {target.owner}/{target.repo} …")
+        diffs = fetch_diffs_for_target(target, token)
+
+        if not diffs:
+            print("No scannable code files found in this diff.")
+            return
+
+        print(f"Found {len(diffs)} code file(s) with changes:\n")
+        for d in diffs:
+            print(f"  {d.filename} ({d.additions}+ / {d.deletions}-)")
+        print()
+
+        # Fetch full file content and annotate with diff markers
+        # Determine the ref to fetch from
+        if target.kind == "pr":
+            # For PRs, use the PR head — fetch via the merge ref
+            ref = f"pull/{target.pr_number}/head"
+        elif target.kind == "commit":
+            ref = target.commit_sha
+        else:
+            ref = target.head_ref
+
+        annotated_codes: dict[str, str] = {}
+        for d in diffs:
+            try:
+                full_code = fetch_file_content(
+                    target.owner, target.repo, d.filename, ref, token
+                )
+                annotated_codes[d.filename] = extract_diff_context(
+                    full_code, d.patch
+                )
+            except Exception as exc:
+                print(f"  Warning: could not fetch {d.filename}: {exc}")
+                # Will fall back to raw patch in run_repo_scan
+
+        print("Running adversarial diff scan …\n")
+        repo_report = run_repo_scan(
+            diffs,
+            annotated_codes,
+            repo_url=url,
+            pr_number=target.pr_number,
+            commit_sha=target.commit_sha,
+            track=track,
+        )
+
+        # ── Summary ──────────────────────────────────────────
+        print(f"\n{'=' * 60}")
+        print(f"Repo Scan Summary")
+        print(f"{'=' * 60}")
+        print(f"Files scanned     : {len(repo_report.file_reports)}")
+        print(f"Total findings    : {repo_report.total_findings}")
+        print(f"Confirmed         : {repo_report.total_confirmed}")
+        print(f"Dismissed (FP)    : {repo_report.total_dismissed}")
+        print()
+
+        for fr in repo_report.file_reports:
+            confirmed = [v for v in fr.report.verdicts if v.confirmed]
+            if not fr.report.findings:
+                print(f"  {fr.filename}: no findings")
+                continue
+            print(f"  {fr.filename}: {len(fr.report.findings)} finding(s), "
+                  f"{len(confirmed)} confirmed")
+            for v in fr.report.verdicts:
+                tag = "CONFIRMED" if v.confirmed else "DISMISSED"
+                finding = next(
+                    (f for f in fr.report.findings if f.finding_id == v.finding_id),
+                    None,
+                )
+                if finding:
+                    print(f"    [{tag}] {v.finding_id}  {finding.cwe_id} — {finding.cwe_name}")
+                    print(f"      Reasoning: {v.reasoning}")
+            print()
+
+        print("--- Full repo scan report (JSON) ---")
+        print(repo_report.model_dump_json(indent=2))
         return
 
     if args.golden is not None:

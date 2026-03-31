@@ -53,6 +53,45 @@ Below are the disputed findings. For each one, the Red Team's claim is followed 
 Deliver your verdict on each finding as a JSON array.
 """
 
+DIFF_SYSTEM_PROMPT = """You are an impartial security judge adjudicating a debate between a Red Team and Blue Team
+about a CODE DIFF.
+
+You are given the changed hunks with surrounding context lines.
+- Lines marked with `// >>> CHANGED` are newly added or modified.
+- Sections replaced with `... (lines N-M omitted) ...` are unchanged and distant from the diff.
+
+Apply the same criteria as a full-file review, but also weigh:
+1. Was the vulnerability INTRODUCED by the change, or did it pre-exist?
+2. Does the surrounding context mitigate the issue?
+3. Is the change actually security-relevant?
+
+The burden of proof is on the Red Team. Only confirm findings with clear evidence that the
+change introduces or worsens a genuine, exploitable vulnerability.
+When in doubt, dismiss.
+
+Set patch to null for all verdicts.
+
+You must respond with ONLY a valid JSON array. No explanation, no markdown, no backticks.
+Each object in the array must have exactly these fields:
+- finding_id: string (matching the original finding_id exactly)
+- confirmed: boolean
+- reasoning: string (your independent analytical reasoning citing specific code evidence)
+- patch: null
+"""
+
+DIFF_USER_PROMPT = """Here is the annotated code diff under review.
+Lines marked with `// >>> CHANGED` are newly added or modified.
+
+File: {filename}
+```
+{code}
+```
+
+{debate_block}
+
+Deliver your verdict on each finding as a JSON array.
+"""
+
 
 def _serialize_debate(
     findings: list[RedTeamFinding],
@@ -119,6 +158,56 @@ def run_judge(
     verdict_map = {item["finding_id"]: item for item in data}
 
     # Guarantee one verdict per finding, in input order
+    verdicts = []
+    for f in findings:
+        if f.finding_id in verdict_map:
+            verdicts.append(JudgeVerdict(**verdict_map[f.finding_id]))
+        else:
+            verdicts.append(JudgeVerdict(
+                finding_id=f.finding_id,
+                confirmed=True,
+                reasoning="Judge did not return a verdict for this finding; confirmed by default.",
+                patch=None,
+            ))
+    return verdicts
+
+
+def run_judge_diff(
+    findings: list[RedTeamFinding],
+    defenses: list[BlueTeamDefense],
+    code: str,
+    filename: str,
+) -> list[JudgeVerdict]:
+    """Judge evaluation on an annotated diff."""
+    if not findings:
+        return []
+
+    llm = get_llm()
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", DIFF_SYSTEM_PROMPT),
+        ("human", DIFF_USER_PROMPT),
+    ])
+
+    chain = prompt | llm
+    response = chain.invoke({
+        "code": code,
+        "filename": filename,
+        "debate_block": _serialize_debate(findings, defenses),
+    })
+
+    raw = response.content.strip()
+
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    raw = re.sub(r"\\'" , "'", raw)
+    data = json.loads(raw)
+    verdict_map = {item["finding_id"]: item for item in data}
+
     verdicts = []
     for f in findings:
         if f.finding_id in verdict_map:

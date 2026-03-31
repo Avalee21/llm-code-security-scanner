@@ -1,6 +1,8 @@
 # LLM Code Security Scanner
 
-A multi-agent system that performs automated C code security review using an adversarial debate pattern. Three LLM-powered agents collaborate to identify vulnerabilities:
+A multi-agent system that performs automated code security review using an adversarial debate pattern. It can scan individual source files **or GitHub pull requests / commits**, focusing only on changed lines to catch vulnerabilities introduced by new code.
+
+Three LLM-powered agents collaborate to identify vulnerabilities:
 
 - **Red Team** — scans code for potential security vulnerabilities, requiring concrete exploit paths
 - **Blue Team** — critically evaluates Red Team findings and filters out false positives
@@ -34,6 +36,7 @@ Edit `.env` and set:
 | `LLM_BACKEND`         | `groq` (default) or `modal`                    |
 | `MODAL_ENDPOINT_URL`  | Modal vLLM endpoint (only if `LLM_BACKEND=modal`) |
 | `MLFLOW_TRACKING_URI` | MLflow store path (default `./mlruns`)         |
+| `GITHUB_TOKEN`        | GitHub token (optional — for private repos / higher rate limits) |
 
 ## Usage
 
@@ -42,6 +45,31 @@ Edit `.env` and set:
 ```bash
 python main.py --file path/to/code.c
 ```
+
+### Scan a GitHub pull request or commit
+
+Point the scanner at any GitHub PR or commit URL — it fetches the diff, extracts only the changed code with surrounding context, and runs the adversarial debate on each modified file:
+
+```bash
+# Scan a pull request
+python main.py --pr https://github.com/Avalee21/vulnerable-code-demo/pull/1
+
+# Scan a specific commit
+python main.py --commit python main.py --commit https://github.com/Avalee21/vulnerable-code-demo/commit/875bcbbf97463462cf8feb3fef1b8ee34785c7e1
+```
+
+For private repositories, provide a GitHub token:
+
+```bash
+python main.py --pr https://github.com/owner/private-repo/pull/42 --github-token ghp_xxx
+# Or set GITHUB_TOKEN in your .env
+```
+
+The scanner automatically:
+- Filters to source code files only (skips `.md`, `.json`, images, etc.)
+- Extracts changed hunks with ~15 lines of surrounding context (not the full file) to save tokens
+- Skips files with >500 changed lines
+- Runs the full Red → Blue → Judge debate per file
 
 ### Scan a golden set sample
 
@@ -142,8 +170,9 @@ agents/
   judge_patcher.py         Judge agent (LLM-powered)
 utils/
   llm.py                   Shared LLM factory (Groq / Modal backends)
-  schemas.py               Pydantic models (findings, defenses, verdicts)
+  schemas.py               Pydantic models (findings, defenses, verdicts, diff reports)
   metrics.py               Evaluation metrics (binary + CWE-matched)
+  github.py                GitHub API integration (PR/commit diff fetching)
 scripts/
   eval_golden_set.py       Debate pipeline evaluation
   eval_baseline.py         Single-pass baseline evaluation

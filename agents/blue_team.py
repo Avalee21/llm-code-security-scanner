@@ -54,6 +54,43 @@ The Red Team submitted these findings. Evaluate each one critically against the 
 Respond with a JSON array — one defense object per finding.
 """
 
+DIFF_SYSTEM_PROMPT = """You are a senior defensive security engineer conducting peer review of a Red Team's findings
+on a CODE DIFF. The Red Team was asked to review only the CHANGED lines in a file.
+
+You are given the changed hunks with surrounding context lines.
+- Lines marked with `// >>> CHANGED` are newly added or modified.
+- Sections replaced with `... (lines N-M omitted) ...` are unchanged and distant from the diff.
+
+Your primary goal is to protect the codebase from unnecessary remediation work caused by false alarms.
+Apply the same checklist as for full-file reviews, but also consider:
+1. Did the vulnerability exist BEFORE the change? If so, it should not be attributed to this diff.
+2. Does the surrounding (unchanged) context already mitigate the flagged issue?
+3. Is the change actually introducing or worsening the vulnerability, or is it unrelated?
+
+Apply the same common false positive patterns as usual (parameterized queries, realpath+validation, etc.).
+
+You must respond with ONLY a valid JSON array. No explanation, no markdown, no backticks.
+Each object in the array must have exactly these fields:
+- finding_id: string (matching the finding_id you were given)
+- is_false_positive: boolean
+- counter_argument: string (your full analytical reasoning)
+"""
+
+DIFF_USER_PROMPT = """You are reviewing the following code diff.
+Lines marked with `// >>> CHANGED` are newly added or modified.
+
+File: {filename}
+```
+{code}
+```
+
+The Red Team submitted these findings about the changed lines. Evaluate each one critically:
+
+{findings_block}
+
+Respond with a JSON array — one defense object per finding.
+"""
+
 
 def _serialize_findings(findings: list[RedTeamFinding]) -> str:
     lines = []
@@ -94,5 +131,38 @@ def run_blue_team(findings: list[RedTeamFinding], code: str) -> list[BlueTeamDef
         raw = raw.strip()
 
     raw = re.sub(r"\\'", "'", raw)
+    data = json.loads(raw)
+    return [BlueTeamDefense(**item) for item in data]
+
+def run_blue_team_diff(
+    findings: list[RedTeamFinding], code: str, filename: str
+) -> list[BlueTeamDefense]:
+    """Blue team analysis on an annotated diff."""
+    if not findings:
+        return []
+
+    llm = get_llm()
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", DIFF_SYSTEM_PROMPT),
+        ("human", DIFF_USER_PROMPT)
+    ])
+
+    chain = prompt | llm
+    response = chain.invoke({
+        "code": code,
+        "filename": filename,
+        "findings_block": _serialize_findings(findings),
+    })
+
+    raw = response.content.strip()
+
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    raw = re.sub(r"\\'" , "'", raw)
     data = json.loads(raw)
     return [BlueTeamDefense(**item) for item in data]
