@@ -9,6 +9,7 @@ class RedTeamFinding(BaseModel):
     severity: str = Field(..., description="critical | high | medium | low")
     vulnerable_code: str = Field(..., description="The exact snippet flagged")
     exploit_argument: str = Field(..., description="Why this is exploitable")
+    original_cwe_id: Optional[str] = Field(None, description="Original CWE before classifier correction")
 
 
 class BlueTeamDefense(BaseModel):
@@ -24,11 +25,21 @@ class JudgeVerdict(BaseModel):
     patch: Optional[str] = Field(None, description="Patched code snippet if confirmed")
 
 
+class VerificationResult(BaseModel):
+    """Result of verifying a single patch against the original vulnerability."""
+    finding_id: str
+    patch_valid: bool = Field(..., description="True if the patch fixes the vulnerability")
+    reason: str = Field(..., description="Explanation of why the patch is valid or not")
+
+
 class DebateReport(BaseModel):
     findings: List[RedTeamFinding]
     defenses: List[BlueTeamDefense]
     verdicts: List[JudgeVerdict]
+    round2_defenses: Optional[List[BlueTeamDefense]] = None
+    round2_verdicts: Optional[List[JudgeVerdict]] = None
     verification_passed: Optional[bool] = None
+    verification_results: Optional[List[VerificationResult]] = None
 
 
 # ── GitHub / diff-scan schemas ──────────────────────────────────
