@@ -199,3 +199,43 @@ def test_judge_missing_verdict_gets_default():
     # F-002 should get default confirmed=True since LLM didn't return it
     assert verdict_map["F-002"].confirmed is True
     assert "default" in verdict_map["F-002"].reasoning.lower()
+
+
+def test_judge_confirmed_with_patch():
+    """Confirmed verdicts can carry a non-null patch."""
+    payload = [{
+        "finding_id": "F-001",
+        "confirmed": True,
+        "reasoning": "Genuine SQL injection",
+        "patch": "cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))",
+    }]
+    result = _run_with_mock(
+        [_finding("F-001")],
+        [_defense("F-001", is_false_positive=False)],
+        "def foo(): pass",
+        payload,
+    )
+
+    assert len(result) == 1
+    assert result[0].confirmed is True
+    assert result[0].patch == "cursor.execute('SELECT * FROM users WHERE id=%s', (uid,))"
+
+
+def test_judge_dismissed_has_null_patch():
+    """Dismissed verdicts should have patch=None."""
+    payload = [{
+        "finding_id": "F-001",
+        "confirmed": False,
+        "reasoning": "Not exploitable",
+        "patch": None,
+    }]
+    result = _run_with_mock(
+        [_finding("F-001")],
+        [_defense("F-001", is_false_positive=True)],
+        "def foo(): pass",
+        payload,
+    )
+
+    assert len(result) == 1
+    assert result[0].confirmed is False
+    assert result[0].patch is None

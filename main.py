@@ -168,6 +168,13 @@ def main():
                 if finding:
                     print(f"    [{tag}] {v.finding_id}  {finding.cwe_id} — {finding.cwe_name}")
                     print(f"      Reasoning: {v.reasoning}")
+                    if v.patch:
+                        print(f"      Patch:")
+                        for line in v.patch.splitlines():
+                            print(f"        {line}")
+            if fr.report.verification_passed is not None:
+                status = "PASSED" if fr.report.verification_passed else "FAILED"
+                print(f"    Verification: {status}")
             print()
 
         print("--- Full repo scan report (JSON) ---")
@@ -238,7 +245,21 @@ def main():
             print(f"[{tag}] {v.finding_id}  {finding.cwe_id} — {finding.cwe_name}")
             print(f"  Severity : {finding.severity}")
             print(f"  Reasoning: {v.reasoning}")
+            if v.patch:
+                print(f"  Patch:")
+                for line in v.patch.splitlines():
+                    print(f"    {line}")
             print()
+
+    # ── Verification ──────────────────────────────────────────
+    if report.verification_passed is not None:
+        status = "PASSED" if report.verification_passed else "FAILED"
+        print(f"Verification    : {status}")
+        if report.verification_results:
+            for vr in report.verification_results:
+                icon = "OK" if vr.patch_valid else "FAIL"
+                print(f"  [{icon}] {vr.finding_id}: {vr.reason}")
+        print()
 
     # ── Full JSON output ─────────────────────────────────────
     print("--- Full debate report (JSON) ---")

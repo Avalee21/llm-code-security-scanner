@@ -124,6 +124,19 @@ def render_report(report: DebateReport, code: str | None = None):
                 else:
                     st.caption("No verdict returned.")
 
+    # ── Verification status
+    if report.verification_passed is not None:
+        st.divider()
+        if report.verification_passed:
+            st.success("🛡️ Verification: PASSED — all patches confirmed effective")
+        else:
+            st.warning("⚠️ Verification: FAILED — some patches may be ineffective")
+
+        if report.verification_results:
+            for vr in report.verification_results:
+                icon = "✅" if vr.patch_valid else "❌"
+                st.markdown(f"  {icon} **{vr.finding_id}**: {vr.reason}")
+
     # ── Raw JSON (collapsible)
     with st.expander("📄 Full JSON Report"):
         st.json(json.loads(report.model_dump_json()))

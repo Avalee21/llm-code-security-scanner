@@ -4,7 +4,7 @@ import re
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 from utils.llm import get_llm
-from utils.schemas import RedTeamFinding
+from utils.schemas import JudgeVerdict, RedTeamFinding, VerificationResult
 
 load_dotenv()
 
@@ -18,6 +18,13 @@ Guidelines:
 4. Assign the most specific CWE that matches the root cause. Do not use a generic CWE when a precise one exists.
 5. Limit your findings to at most 3 per code sample. Prioritize by severity and exploitability.
 6. If the code is secure or you cannot construct a concrete exploit, return an empty array.
+
+Quality over quantity:
+- Only report vulnerabilities you are HIGHLY CONFIDENT about — each finding must have a clear, concrete exploit path grounded in the actual code.
+- Do NOT report speculative or theoretical vulnerabilities. If the code already mitigates the issue (e.g. parameterized queries, snprintf with sizeof, realpath + prefix check, explicit NULL checks, bounds validation), do NOT flag it.
+- Focus on the SINGLE BEST CWE classification for each distinct vulnerability. Do not report multiple overlapping CWEs for the same code pattern.
+- Only report findings with severity medium or above.
+- If the code is genuinely safe and well-written, return an empty array. Do not manufacture findings.
 
 You must respond with ONLY a valid JSON array. No explanation, no markdown, no backticks.
 Each object in the array must have exactly these fields:
@@ -100,8 +107,11 @@ def run_red_team(code: str) -> list[RedTeamFinding]:
         raw = raw.strip()
 
     raw = re.sub(r"\\'", "'", raw)
+    # Fix invalid JSON escapes (e.g. \s, \d) that LLMs sometimes produce in code snippets
+    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
     data = json.loads(raw)
     return [RedTeamFinding(**item) for item in data]
+
 
 def run_red_team_diff(code: str, filename: str) -> list[RedTeamFinding]:
     """Red team analysis on an annotated diff (full file with CHANGED markers)."""
@@ -124,5 +134,106 @@ def run_red_team_diff(code: str, filename: str) -> list[RedTeamFinding]:
         raw = raw.strip()
 
     raw = re.sub(r"\\'" , "'", raw)
+    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
     data = json.loads(raw)
     return [RedTeamFinding(**item) for item in data]
+
+
+# ── Patch verification ────────────────────────────────────────────
+
+VERIFICATION_SYSTEM_PROMPT = """You are a security engineer verifying whether code patches effectively fix known vulnerabilities.
+
+For each patch, you are given:
+- The original vulnerable code snippet
+- The vulnerability details (CWE, severity, exploit argument)
+- The proposed patch (corrected code)
+
+Your job is to determine whether the patch:
+1. Fixes the stated vulnerability without introducing new security issues
+2. Preserves the original code's intended functionality
+3. Is syntactically correct
+
+You must respond with ONLY a valid JSON array. No explanation, no markdown, no backticks.
+Each object in the array must have exactly these fields:
+- finding_id: string (matching the original finding_id)
+- patch_valid: boolean (true if the patch effectively fixes the vulnerability)
+- reason: string (brief explanation of why the patch is or is not valid)
+"""
+
+VERIFICATION_USER_PROMPT = """Here is the full source code:
+```
+{code}
+```
+
+Verify the following patches:
+
+{patches_block}
+"""
+
+
+def _serialize_patches(
+    verdicts: list[JudgeVerdict],
+    findings: list[RedTeamFinding],
+) -> str:
+    finding_map = {f.finding_id: f for f in findings}
+    blocks = []
+    for v in verdicts:
+        if not v.confirmed or not v.patch:
+            continue
+        f = finding_map.get(v.finding_id)
+        if not f:
+            continue
+        block = (
+            f"Patch for {v.finding_id}:\n"
+            f"  CWE: {f.cwe_id} — {f.cwe_name}\n"
+            f"  Severity: {f.severity}\n"
+            f"  Original vulnerable code:\n    {f.vulnerable_code}\n"
+            f"  Exploit argument: {f.exploit_argument}\n"
+            f"  Proposed patch:\n    {v.patch}\n"
+        )
+        blocks.append(block)
+    return "\n".join(blocks)
+
+
+def run_verification(
+    code: str,
+    verdicts: list[JudgeVerdict],
+    findings: list[RedTeamFinding],
+) -> tuple[bool | None, list[VerificationResult]]:
+    """Verify whether Judge-generated patches effectively fix the vulnerabilities.
+
+    Returns (verification_passed, verification_results).
+    verification_passed is None if there are no patches to verify.
+    """
+    confirmed_with_patches = [v for v in verdicts if v.confirmed and v.patch]
+    if not confirmed_with_patches:
+        return None, []
+
+    llm = get_llm()
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", VERIFICATION_SYSTEM_PROMPT),
+        ("human", VERIFICATION_USER_PROMPT),
+    ])
+
+    chain = prompt | llm
+    response = chain.invoke({
+        "code": code,
+        "patches_block": _serialize_patches(verdicts, findings),
+    })
+
+    raw = response.content.strip()
+
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    raw = re.sub(r"\\'", "'", raw)
+    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
+    data = json.loads(raw)
+
+    results = [VerificationResult(**item) for item in data]
+    all_valid = all(r.patch_valid for r in results)
+    return all_valid, results
