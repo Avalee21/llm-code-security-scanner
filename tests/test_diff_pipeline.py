@@ -111,13 +111,19 @@ class TestDiffSchemas:
 
 
 class TestRunDiffPipeline:
+    @patch("orchestrator.graph.run_judge_round2")
+    @patch("orchestrator.graph.run_blue_team_round2")
     @patch("orchestrator.graph.run_judge_diff")
     @patch("orchestrator.graph.run_blue_team_diff")
+    @patch("orchestrator.graph.run_cwe_classifier_diff")
     @patch("orchestrator.graph.run_red_team_diff")
-    def test_returns_debate_report(self, mock_red, mock_blue, mock_judge):
+    def test_returns_debate_report(self, mock_red, mock_classifier, mock_blue, mock_judge, mock_r2_blue, mock_r2_judge):
         mock_red.return_value = [_finding()]
+        mock_classifier.return_value = [_finding()]
         mock_blue.return_value = [_defense()]
         mock_judge.return_value = [_verdict()]
+        mock_r2_blue.return_value = [_defense()]
+        mock_r2_judge.return_value = [_verdict()]
 
         report = run_diff_pipeline("code", "main.c")
 

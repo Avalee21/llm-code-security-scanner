@@ -22,7 +22,7 @@ For each finding, examine the FULL source code provided and apply this checklist
 
 Common false positive patterns — if ANY of these apply, you MUST mark the finding as a false positive:
 - SQL: Code uses parameterized queries, prepared statements, or ORM-based queries (not string concatenation).
-- Path Traversal (CWE-22): Code uses realpath() + prefix validation, or restricts input to a whitelist of filenames.
+- Path Traversal (CWE-22): Code calls realpath() or equivalent AND validates that the resolved path starts with the intended prefix — a hardcoded prefix alone (e.g. snprintf with public_root + user_input) is NOT sufficient because "../" sequences are not stripped.
 - OS Command Injection (CWE-78): Code uses subprocess with a list of arguments (no shell=True), or input is validated against a whitelist.
 - Hardcoded Credentials (CWE-798): The "hardcoded" value is a configuration constant (file path, URL, table name, placeholder), NOT an actual secret, password, or API key.
 - Integer Overflow (CWE-190): Code performs explicit bounds checking, uses safe integer types, or the arithmetic result is range-checked before use.
@@ -131,6 +131,7 @@ def run_blue_team(findings: list[RedTeamFinding], code: str) -> list[BlueTeamDef
         raw = raw.strip()
 
     raw = re.sub(r"\\'", "'", raw)
+    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
     data = json.loads(raw)
     return [BlueTeamDefense(**item) for item in data]
 
@@ -164,5 +165,97 @@ def run_blue_team_diff(
         raw = raw.strip()
 
     raw = re.sub(r"\\'" , "'", raw)
+    data = json.loads(raw)
+    return [BlueTeamDefense(**item) for item in data]
+
+
+ROUND2_SYSTEM_PROMPT = """You are a principal security engineer conducting a final adversarial review.
+A judge has already confirmed these findings after hearing initial arguments. Your job is to overturn wrongly confirmed findings.
+
+IMPORTANT: You are not here to rubber-stamp the judge's decision. Be aggressive. Be specific. Cite the exact code.
+
+For each finding, apply this escalated checklist in order:
+1. ATTACK PATH FEASIBILITY: Trace the exact data flow from user input to the vulnerable line. Is there ANY implicit or explicit guard that blocks the attack before it reaches the vulnerable code? Even partial sanitization counts.
+2. PRECONDITION ANALYSIS: What exact conditions must hold simultaneously for this exploit to work? List each precondition. If any precondition is unrealistic or already blocked, mark as false positive.
+3. EXPLOIT ARGUMENT FLAWS: Is the Red Team's exploit argument technically accurate for this specific code? Wrong function semantics, incorrect assumptions about the language runtime, or misidentified variable scope all make the finding invalid.
+4. MISSED MITIGATIONS: Re-read the full source code — not just the flagged snippet. Check: OS-level protections, compiler flags implied by usage patterns, API contract guarantees, calling context constraints.
+5. CWE MISMATCH: If the confirmed CWE does not precisely match the actual code pattern, the finding is invalid regardless of whether some vulnerability exists.
+
+Mandatory false positive triggers — if ANY apply, you MUST set is_false_positive=true:
+- CWE-22: Code calls realpath() or equivalent AND checks that the resolved path starts with the allowed prefix — a hardcoded prefix combined with snprintf is NOT a mitigation because "../" sequences traverse out of it.
+- CWE-78: Command is exec'd as a list (not shell string), or input is restricted to alphanumeric/whitelist characters.
+- CWE-89: Query uses placeholders (%s, ?, :param) with separate parameter binding — NOT string concatenation.
+- CWE-190: Result is checked against INT_MAX/INT_MIN or cast to a wider type before use.
+- CWE-476: Pointer is checked != NULL before every dereference in the flagged code path.
+- CWE-798: The "hardcoded" value is a file path, hostname, table name, or non-secret constant — NOT a password, API key, or private key.
+
+You MUST provide a counter_argument that:
+- Quotes the exact line(s) from the code that constitute the mitigation
+- Explains step-by-step why the exploit cannot succeed given those lines
+- Does NOT simply repeat the round 1 argument — add new evidence or a deeper analysis
+
+You must respond with ONLY a valid JSON array. No explanation, no markdown, no backticks.
+Each object must have exactly these fields:
+- finding_id: string (matching the input finding_id exactly)
+- is_false_positive: boolean
+- counter_argument: string (your full escalated analytical reasoning with code citations)
+"""
+
+ROUND2_USER_PROMPT = """Source code under review:
+```
+{code}
+```
+
+These findings were confirmed by the judge in round 1. Each entry includes the round 1 defense argument that FAILED to convince the judge. Your task is to build a stronger case.
+
+{findings_block}
+
+Respond with a JSON array — one defense object per finding.
+"""
+
+
+def run_blue_team_round2(
+    confirmed_findings: list[RedTeamFinding],
+    code: str,
+    round1_defenses: list[BlueTeamDefense],
+) -> list[BlueTeamDefense]:
+    """Second-round Blue Team challenge targeting only judge-confirmed findings."""
+    if not confirmed_findings:
+        return []
+
+    defense_map = {d.finding_id: d.counter_argument for d in round1_defenses}
+
+    lines = []
+    for i, f in enumerate(confirmed_findings, start=1):
+        r1 = defense_map.get(f.finding_id, "(no round 1 defense submitted)")
+        lines.append(
+            f"Finding {i}:\n"
+            f"  finding_id: {f.finding_id}\n"
+            f"  cwe_id: {f.cwe_id}\n"
+            f"  cwe_name: {f.cwe_name}\n"
+            f"  severity: {f.severity}\n"
+            f"  vulnerable_code: {f.vulnerable_code}\n"
+            f"  exploit_argument: {f.exploit_argument}\n"
+            f"  ROUND 1 DEFENSE (failed): {r1}"
+        )
+    findings_block = "\n\n".join(lines)
+
+    llm = get_llm()
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", ROUND2_SYSTEM_PROMPT),
+        ("human", ROUND2_USER_PROMPT),
+    ])
+    chain = prompt | llm
+    response = chain.invoke({"code": code, "findings_block": findings_block})
+
+    raw = response.content.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+
+    raw = re.sub(r"\\'", "'", raw)
+    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
     data = json.loads(raw)
     return [BlueTeamDefense(**item) for item in data]

@@ -5,9 +5,11 @@ from typing import TypedDict, Optional
 import mlflow
 from langgraph.graph import StateGraph, END
 
-from agents.red_team import run_red_team, run_red_team_diff
-from agents.blue_team import run_blue_team, run_blue_team_diff
-from agents.judge_patcher import run_judge, run_judge_diff
+from agents.red_team import run_red_team, run_red_team_diff, run_verification
+from agents.blue_team import run_blue_team, run_blue_team_diff, run_blue_team_round2
+from agents.judge_patcher import run_judge, run_judge_diff, run_judge_round2
+from agents.cwe_classifier import run_cwe_classifier, run_cwe_classifier_diff
+from utils.metrics import final_verdicts
 from utils.schemas import (
     BlueTeamDefense,
     DebateReport,
@@ -25,6 +27,9 @@ class PipelineState(TypedDict, total=False):
     defenses: list[BlueTeamDefense]
     verdicts: list[JudgeVerdict]
     report: DebateReport
+    confirmed_findings: list[RedTeamFinding]
+    defenses_r2: list[BlueTeamDefense]
+    verdicts_r2: list[JudgeVerdict]
 
 
 # ── Node functions ──────────────────────────────────────────────
@@ -32,6 +37,11 @@ class PipelineState(TypedDict, total=False):
 
 def red_team_node(state: PipelineState) -> dict:
     findings = run_red_team(state["code"])
+    return {"findings": findings}
+
+
+def cwe_classifier_node(state: PipelineState) -> dict:
+    findings = run_cwe_classifier(state["findings"], state["code"])
     return {"findings": findings}
 
 
@@ -50,20 +60,68 @@ def judge_node(state: PipelineState) -> dict:
     return {"verdicts": verdicts, "report": report}
 
 
+def blue_team_r2_node(state: PipelineState) -> dict:
+    confirmed = [f for f in state["findings"]
+                 if any(v.confirmed and v.finding_id == f.finding_id for v in state["verdicts"])]
+    if not confirmed:
+        return {}
+    defenses_r2 = run_blue_team_round2(confirmed, state["code"], state["defenses"])
+    return {"confirmed_findings": confirmed, "defenses_r2": defenses_r2}
+
+
+def judge_r2_node(state: PipelineState) -> dict:
+    verdicts_r2 = run_judge_round2(
+        state["confirmed_findings"], state["verdicts"], state["defenses_r2"], state["code"]
+    )
+    report = state["report"].model_copy(update={
+        "round2_defenses": state["defenses_r2"],
+        "round2_verdicts": verdicts_r2,
+    })
+    return {"verdicts_r2": verdicts_r2, "report": report}
+
+
+def verification_node(state: PipelineState) -> dict:
+    """Verify Judge-generated patches by re-checking with the Red Team."""
+    report = state["report"]
+    passed, results = run_verification(
+        state["code"], final_verdicts(report), report.findings,
+    )
+    updated = report.model_copy(update={
+        "verification_passed": passed,
+        "verification_results": results if results else None,
+    })
+    return {"report": updated}
+
+
 # ── Graph construction ──────────────────────────────────────────
+
+
+def _should_run_round2(state: PipelineState) -> str:
+    return "blue_team_r2" if any(v.confirmed for v in state["verdicts"]) else "verification"
 
 
 def build_graph() -> StateGraph:
     graph = StateGraph(PipelineState)
 
     graph.add_node("red_team", red_team_node)
+    graph.add_node("cwe_classifier", cwe_classifier_node)
     graph.add_node("blue_team", blue_team_node)
     graph.add_node("judge", judge_node)
+    graph.add_node("blue_team_r2", blue_team_r2_node)
+    graph.add_node("judge_r2", judge_r2_node)
+    graph.add_node("verification", verification_node)
 
     graph.set_entry_point("red_team")
-    graph.add_edge("red_team", "blue_team")
+    graph.add_edge("red_team", "cwe_classifier")
+    graph.add_edge("cwe_classifier", "blue_team")
     graph.add_edge("blue_team", "judge")
-    graph.add_edge("judge", END)
+    graph.add_conditional_edges("judge", _should_run_round2, {
+        "blue_team_r2": "blue_team_r2",
+        "verification": "verification",
+    })
+    graph.add_edge("blue_team_r2", "judge_r2")
+    graph.add_edge("judge_r2", "verification")
+    graph.add_edge("verification", END)
 
     return graph.compile()
 
@@ -117,15 +175,27 @@ def run_diff_pipeline(
     annotated_code: str,
     filename: str,
 ) -> DebateReport:
-    """Run the Red → Blue → Judge pipeline on one annotated diff file."""
+    """Run the Red → Blue → Judge → Verification pipeline on one annotated diff file."""
     findings = run_red_team_diff(annotated_code, filename)
+    findings = run_cwe_classifier_diff(findings, annotated_code, filename)
     defenses = run_blue_team_diff(findings, annotated_code, filename)
     verdicts = run_judge_diff(findings, defenses, annotated_code, filename)
-    return DebateReport(
+    report = DebateReport(
         findings=findings,
         defenses=defenses,
         verdicts=verdicts,
     )
+    confirmed = [f for f in findings
+                 if any(v.confirmed and v.finding_id == f.finding_id for v in verdicts)]
+    if confirmed:
+        defenses_r2 = run_blue_team_round2(confirmed, annotated_code, defenses)
+        verdicts_r2 = run_judge_round2(confirmed, verdicts, defenses_r2, annotated_code)
+        report.round2_defenses = defenses_r2
+        report.round2_verdicts = verdicts_r2
+    passed, results = run_verification(annotated_code, final_verdicts(report), findings)
+    report.verification_passed = passed
+    report.verification_results = results if results else None
+    return report
 
 
 def run_repo_scan(

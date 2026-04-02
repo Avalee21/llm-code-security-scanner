@@ -49,12 +49,17 @@ class EvalMetrics:
     sample_results: list[dict] = field(default_factory=list)
 
 
+def final_verdicts(report: DebateReport):
+    """Return round2_verdicts if present, otherwise round1 verdicts."""
+    return report.round2_verdicts if report.round2_verdicts is not None else report.verdicts
+
+
 def _cwe_matched_flag(report: DebateReport, expected_cwe: str) -> bool:
     """Return True if any confirmed verdict's finding has a CWE matching *expected_cwe*."""
     cwe_by_finding = {f.finding_id: f.cwe_id for f in report.findings}
     return any(
         cwe_by_finding.get(v.finding_id) == expected_cwe
-        for v in report.verdicts
+        for v in final_verdicts(report)
         if v.confirmed
     )
 
@@ -72,7 +77,7 @@ def classify_sample(
     finding carries the correct CWE.  When *expected_cwe* is ``None`` the
     CWE-matched result mirrors the base result.
     """
-    flagged = any(v.confirmed for v in report.verdicts)
+    flagged = any(v.confirmed for v in final_verdicts(report))
 
     if expected_cwe is not None:
         cwe_flagged = _cwe_matched_flag(report, expected_cwe)
@@ -134,9 +139,9 @@ def compute_metrics(results: list[SampleResult]) -> EvalMetrics:
         # Per-finding counts
         cwe_by_finding = {f.finding_id: f.cwe_id for f in r.report.findings}
         n_findings = len(r.report.findings)
-        n_confirmed = sum(1 for v in r.report.verdicts if v.confirmed)
+        n_confirmed = sum(1 for v in final_verdicts(r.report) if v.confirmed)
         n_cwe_matched = sum(
-            1 for v in r.report.verdicts
+            1 for v in final_verdicts(r.report)
             if v.confirmed and cwe_by_finding.get(v.finding_id) == r.cwe_id
         )
         metrics.total_findings += n_findings

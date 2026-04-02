@@ -39,14 +39,22 @@ SAMPLE_CODE = "int main() { return 0; }"
 # Tests
 # ---------------------------------------------------------------------------
 
+@patch("orchestrator.graph.run_judge_round2")
+@patch("orchestrator.graph.run_blue_team_round2")
 @patch("orchestrator.graph.run_judge")
 @patch("orchestrator.graph.run_blue_team")
+@patch("orchestrator.graph.run_cwe_classifier")
 @patch("orchestrator.graph.run_red_team")
-def test_pipeline_returns_debate_report(mock_red, mock_blue, mock_judge):
+def test_pipeline_returns_debate_report(mock_red, mock_classifier, mock_blue, mock_judge, mock_r2_blue, mock_r2_judge):
     mock_red.return_value = [_finding()]
+    mock_classifier.return_value = [_finding()]
     mock_blue.return_value = [_defense()]
     mock_judge.return_value = [
         JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="confirmed", patch=None)
+    ]
+    mock_r2_blue.return_value = [_defense()]
+    mock_r2_judge.return_value = [
+        JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="still confirmed", patch=None)
     ]
 
     report = run_pipeline(SAMPLE_CODE, track=False)
@@ -57,21 +65,32 @@ def test_pipeline_returns_debate_report(mock_red, mock_blue, mock_judge):
     assert len(report.verdicts) == 1
 
 
+@patch("orchestrator.graph.run_judge_round2")
+@patch("orchestrator.graph.run_blue_team_round2")
 @patch("orchestrator.graph.run_judge")
 @patch("orchestrator.graph.run_blue_team")
+@patch("orchestrator.graph.run_cwe_classifier")
 @patch("orchestrator.graph.run_red_team")
-def test_pipeline_calls_agents_in_order(mock_red, mock_blue, mock_judge):
+def test_pipeline_calls_agents_in_order(mock_red, mock_classifier, mock_blue, mock_judge, mock_r2_blue, mock_r2_judge):
     mock_red.return_value = [_finding()]
+    mock_classifier.return_value = [_finding()]
     mock_blue.return_value = [_defense()]
     mock_judge.return_value = [
         JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="ok", patch=None)
+    ]
+    mock_r2_blue.return_value = [_defense()]
+    mock_r2_judge.return_value = [
+        JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="still ok", patch=None)
     ]
 
     run_pipeline(SAMPLE_CODE, track=False)
 
     mock_red.assert_called_once_with(SAMPLE_CODE)
+    mock_classifier.assert_called_once()
     mock_blue.assert_called_once()
     mock_judge.assert_called_once()
+    mock_r2_blue.assert_called_once()
+    mock_r2_judge.assert_called_once()
 
 
 @patch("orchestrator.graph.run_judge")
@@ -89,10 +108,13 @@ def test_pipeline_no_findings(mock_red, mock_blue, mock_judge):
     assert report.verdicts == []
 
 
+@patch("orchestrator.graph.run_judge_round2")
+@patch("orchestrator.graph.run_blue_team_round2")
 @patch("orchestrator.graph.run_judge")
 @patch("orchestrator.graph.run_blue_team")
+@patch("orchestrator.graph.run_cwe_classifier")
 @patch("orchestrator.graph.run_red_team")
-def test_pipeline_multiple_findings(mock_red, mock_blue, mock_judge):
+def test_pipeline_multiple_findings(mock_red, mock_classifier, mock_blue, mock_judge, mock_r2_blue, mock_r2_judge):
     findings = [_finding("F-001"), _finding("F-002")]
     defenses = [_defense("F-001", fp=True), _defense("F-002", fp=False)]
     verdicts = [
@@ -100,8 +122,13 @@ def test_pipeline_multiple_findings(mock_red, mock_blue, mock_judge):
         JudgeVerdict(finding_id="F-002", confirmed=True, reasoning="real", patch=None),
     ]
     mock_red.return_value = findings
+    mock_classifier.return_value = findings
     mock_blue.return_value = defenses
     mock_judge.return_value = verdicts
+    mock_r2_blue.return_value = [_defense("F-002")]
+    mock_r2_judge.return_value = [
+        JudgeVerdict(finding_id="F-002", confirmed=True, reasoning="still real", patch=None)
+    ]
 
     report = run_pipeline(SAMPLE_CODE, track=False)
 
@@ -112,14 +139,22 @@ def test_pipeline_multiple_findings(mock_red, mock_blue, mock_judge):
 
 
 @patch("orchestrator.graph.mlflow")
+@patch("orchestrator.graph.run_judge_round2")
+@patch("orchestrator.graph.run_blue_team_round2")
 @patch("orchestrator.graph.run_judge")
 @patch("orchestrator.graph.run_blue_team")
+@patch("orchestrator.graph.run_cwe_classifier")
 @patch("orchestrator.graph.run_red_team")
-def test_pipeline_mlflow_tracking_enabled(mock_red, mock_blue, mock_judge, mock_mlflow):
+def test_pipeline_mlflow_tracking_enabled(mock_red, mock_classifier, mock_blue, mock_judge, mock_r2_blue, mock_r2_judge, mock_mlflow):
     mock_red.return_value = [_finding()]
+    mock_classifier.return_value = [_finding()]
     mock_blue.return_value = [_defense()]
     mock_judge.return_value = [
         JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="ok", patch=None)
+    ]
+    mock_r2_blue.return_value = [_defense()]
+    mock_r2_judge.return_value = [
+        JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="still ok", patch=None)
     ]
 
     run_pipeline(SAMPLE_CODE, track=True, sample_id="test-sample")
@@ -129,14 +164,22 @@ def test_pipeline_mlflow_tracking_enabled(mock_red, mock_blue, mock_judge, mock_
 
 
 @patch("orchestrator.graph.mlflow")
+@patch("orchestrator.graph.run_judge_round2")
+@patch("orchestrator.graph.run_blue_team_round2")
 @patch("orchestrator.graph.run_judge")
 @patch("orchestrator.graph.run_blue_team")
+@patch("orchestrator.graph.run_cwe_classifier")
 @patch("orchestrator.graph.run_red_team")
-def test_pipeline_mlflow_tracking_disabled(mock_red, mock_blue, mock_judge, mock_mlflow):
+def test_pipeline_mlflow_tracking_disabled(mock_red, mock_classifier, mock_blue, mock_judge, mock_r2_blue, mock_r2_judge, mock_mlflow):
     mock_red.return_value = [_finding()]
+    mock_classifier.return_value = [_finding()]
     mock_blue.return_value = [_defense()]
     mock_judge.return_value = [
         JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="ok", patch=None)
+    ]
+    mock_r2_blue.return_value = [_defense()]
+    mock_r2_judge.return_value = [
+        JudgeVerdict(finding_id="F-001", confirmed=True, reasoning="still ok", patch=None)
     ]
 
     run_pipeline(SAMPLE_CODE, track=False)
