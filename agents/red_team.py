@@ -110,7 +110,7 @@ def run_red_team(code: str) -> list[RedTeamFinding]:
     chain = prompt | llm
     response = chain.invoke({"code": code})
     data = parse_llm_json(response.content)
-    findings = [RedTeamFinding(**item) for item in data]
+    findings = [RedTeamFinding(**item) for item in data if isinstance(item, dict)]
     return _dedup_by_cwe(findings)
 
 
@@ -126,7 +126,7 @@ def run_red_team_diff(code: str, filename: str) -> list[RedTeamFinding]:
     chain = prompt | llm
     response = chain.invoke({"code": code, "filename": filename})
     data = parse_llm_json(response.content)
-    findings = [RedTeamFinding(**item) for item in data]
+    findings = [RedTeamFinding(**item) for item in data if isinstance(item, dict)]
     return _dedup_by_cwe(findings)
 
 

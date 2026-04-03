@@ -1,6 +1,7 @@
 """Streamlit dashboard for the LLM Code Security Scanner."""
 
 import json
+import time
 from datetime import datetime, timezone
 
 import streamlit as st
@@ -45,14 +46,18 @@ st.caption("Adversarial multi-agent vulnerability detection — Red Team → Blu
 
 with st.sidebar:
     st.header("⚙️ Settings")
-    track_mlflow = st.checkbox("Log to MLflow", value=False)
+    track_mlflow = st.checkbox("Log to MLflow", value=True)
     st.divider()
     st.markdown(
         "**How it works**\n\n"
         "1. **Red Team** scans for vulnerabilities\n"
         "2. **Blue Team** challenges false positives\n"
-        "3. **Judge** delivers final verdicts\n\n"
-        "Only findings that survive the adversarial debate are confirmed."
+        "3. **Judge R1** confirms or dismisses\n"
+        "4. **Blue Team R2** re-challenges confirmed findings\n"
+        "5. **Judge R2** delivers final verdicts\n"
+        "6. **CWE Classifier** verifies vulnerability types\n"
+        "7. **Verification** checks patch effectiveness\n\n"
+        "Only findings that survive the two-round adversarial debate are confirmed."
     )
 
 # ── Helper: render a single DebateReport ─────────────────────────
@@ -478,16 +483,24 @@ def _render_eval_metrics(metrics: dict[str, float], per_cwe: dict | None = None,
     # Fall back to cwe_* keys for backward compat with old MLflow runs
     st.markdown("##### Binary Detection (any confirmed finding = detection)")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("TP", int(metrics.get("tp", metrics.get("cwe_tp", 0))))
-    c2.metric("FP", int(metrics.get("fp", metrics.get("cwe_fp", 0))))
-    c3.metric("TN", int(metrics.get("tn", metrics.get("cwe_tn", 0))))
-    c4.metric("FN", int(metrics.get("fn", metrics.get("cwe_fn", 0))))
+    c1.metric("TP", int(metrics.get("tp", metrics.get("cwe_tp", 0))),
+             help="True Positive: vulnerable sample with ≥1 confirmed finding")
+    c2.metric("FP", int(metrics.get("fp", metrics.get("cwe_fp", 0))),
+             help="False Positive: safe sample incorrectly flagged (≥1 confirmed finding)")
+    c3.metric("TN", int(metrics.get("tn", metrics.get("cwe_tn", 0))),
+             help="True Negative: safe sample correctly cleared (no confirmed findings)")
+    c4.metric("FN", int(metrics.get("fn", metrics.get("cwe_fn", 0))),
+             help="False Negative: vulnerable sample missed (no confirmed findings)")
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Precision", _pct(metrics.get("precision", metrics.get("cwe_precision", 0))))
-    c2.metric("Recall", _pct(metrics.get("recall", metrics.get("cwe_recall", 0))))
-    c3.metric("F1", _pct(metrics.get("f1", metrics.get("cwe_f1", 0))))
-    c4.metric("FPR", _pct(metrics.get("false_positive_rate", metrics.get("cwe_false_positive_rate", 0))))
+    c1.metric("Precision", _pct(metrics.get("precision", metrics.get("cwe_precision", 0))),
+             help="TP / (TP + FP) — of all flagged samples, how many are truly vulnerable?")
+    c2.metric("Recall", _pct(metrics.get("recall", metrics.get("cwe_recall", 0))),
+             help="TP / (TP + FN) — of all vulnerable samples, how many were detected?")
+    c3.metric("F1", _pct(metrics.get("f1", metrics.get("cwe_f1", 0))),
+             help="2 × Precision × Recall / (Precision + Recall) — harmonic mean of precision and recall")
+    c4.metric("FPR", _pct(metrics.get("false_positive_rate", metrics.get("cwe_false_positive_rate", 0))),
+             help="FP / (FP + TN) — of all safe samples, how many were incorrectly flagged?")
 
     # ── Secondary: CWE-matched metrics ─────────────────
     cwe_tp = metrics.get("cwe_tp", 0)
@@ -500,16 +513,24 @@ def _render_eval_metrics(metrics: dict[str, float], per_cwe: dict | None = None,
         st.divider()
         st.markdown("##### CWE-Matched (correct vulnerability type required for TP)")
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("CWE TP", int(cwe_tp))
-        c2.metric("CWE FP", int(cwe_fp))
-        c3.metric("CWE TN", int(cwe_tn))
-        c4.metric("CWE FN", int(cwe_fn))
+        c1.metric("CWE TP", int(cwe_tp),
+                 help="Vulnerable sample with ≥1 confirmed finding carrying the correct CWE")
+        c2.metric("CWE FP", int(cwe_fp),
+                 help="Safe sample incorrectly flagged (same as binary FP — CWE irrelevant for safe samples)")
+        c3.metric("CWE TN", int(cwe_tn),
+                 help="Safe sample correctly cleared (same as binary TN)")
+        c4.metric("CWE FN", int(cwe_fn),
+                 help="Vulnerable sample with no confirmed finding matching the expected CWE (includes wrong-CWE detections)")
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("CWE Precision", _pct(metrics.get("cwe_precision", 0)))
-        c2.metric("CWE Recall", _pct(metrics.get("cwe_recall", 0)))
-        c3.metric("CWE F1", _pct(cwe_f1))
-        c4.metric("CWE FPR", _pct(metrics.get("cwe_false_positive_rate", 0)))
+        c1.metric("CWE Precision", _pct(metrics.get("cwe_precision", 0)),
+                 help="CWE TP / (CWE TP + CWE FP) — precision requiring correct CWE for true positives")
+        c2.metric("CWE Recall", _pct(metrics.get("cwe_recall", 0)),
+                 help="CWE TP / (CWE TP + CWE FN) — recall requiring correct CWE; lower than binary recall when wrong CWEs are confirmed")
+        c3.metric("CWE F1", _pct(cwe_f1),
+                 help="Harmonic mean of CWE Precision and CWE Recall")
+        c4.metric("CWE FPR", _pct(metrics.get("cwe_false_positive_rate", 0)),
+                 help="Always identical to binary FPR — safe samples are evaluated the same way in both tiers")
 
         # Noise: confirmed findings with wrong CWE on vulnerable samples
         irrelevant = int(metrics.get("irrelevant_confirmed", 0))
@@ -583,8 +604,6 @@ with tab_eval:
         is_baseline = eval_method == "Red Team Only (no debate)"
         method_label = "red-team-only" if is_baseline else "debate-pipeline"
 
-        log_mlflow = st.checkbox("Log to MLflow", value=True, key="eval_log_mlflow")
-
         if st.button("🚀 Run Evaluation", key="run_eval"):
             try:
                 with open(GOLDEN_SET_PATH, "r", encoding="utf-8") as f:
@@ -605,7 +624,9 @@ with tab_eval:
                     (i) / len(eval_samples),
                     text=f"Scanning {s['id']} ({i + 1}/{len(eval_samples)})…",
                 )
-                try:
+                last_err = None
+                for attempt in range(3):
+                  try:
                     if is_baseline:
                         report = run_baseline_single(s["code"])
                     else:
@@ -632,9 +653,23 @@ with tab_eval:
                         icon = "⚡"
                         classification = "TP+noise"
                     status_area.caption(f"{icon} {s['id']}: {classification}")
-                except Exception as e:
-                    errors.append(f"{s['id']}: {e}")
-                    status_area.caption(f"❌ {s['id']}: ERROR — {e}")
+                    last_err = None
+                    break
+                  except Exception as e:
+                    last_err = e
+                    err_str = str(e)
+                    if "429" in err_str or "RateLimitReached" in err_str or "rate limit" in err_str.lower():
+                        wait = 60 * (attempt + 1)
+                        status_area.caption(f"⏳ {s['id']}: Rate limited, waiting {wait}s (attempt {attempt + 1}/3)…")
+                        time.sleep(wait)
+                    elif "Expecting value" in err_str or "JSONDecodeError" in err_str:
+                        status_area.caption(f"🔄 {s['id']}: Parse error, retrying (attempt {attempt + 1}/3)…")
+                        time.sleep(5)
+                    else:
+                        break  # non-retryable error
+                if last_err is not None:
+                    errors.append(f"{s['id']}: {last_err}")
+                    status_area.caption(f"❌ {s['id']}: ERROR — {last_err}")
 
             progress.progress(1.0, text="Evaluation complete!")
 
@@ -649,8 +684,7 @@ with tab_eval:
             st.session_state["eval_method"] = method_label
 
             # ── Log aggregate results to MLflow ──────────────
-            log_mlflow = st.session_state.get("eval_log_mlflow", True)
-            if log_mlflow:
+            if track_mlflow:
               try:
                 import hashlib
                 from agents.red_team import SYSTEM_PROMPT as RED_PROMPT

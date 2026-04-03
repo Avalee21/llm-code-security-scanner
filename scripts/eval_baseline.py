@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 
 import mlflow
 
@@ -67,7 +68,9 @@ def run_baseline(limit: int | None = None):
 
     for i, sample in enumerate(samples):
         sample_id = sample["id"]
-        try:
+        last_err = None
+        for attempt in range(3):
+          try:
             report = run_baseline_single(sample["code"])
 
             flagged, classification, cwe_flagged, cwe_cls = classify_sample(
@@ -87,10 +90,24 @@ def run_baseline(limit: int | None = None):
             flag_str = "YES" if flagged else "NO"
             n_findings = len(report.findings)
             print(f"{i:<4} {sample_id:<26} {sample['cwe_id']:<8} {truth:<12} {flag_str:<10} {classification:<6} {n_findings}")
+            last_err = None
+            break
 
-        except Exception as e:
-            errors.append(f"{sample_id}: {e}")
-            print(f"{i:<4} {sample_id:<26} ERROR: {e}")
+          except Exception as e:
+            last_err = e
+            err_str = str(e)
+            if "429" in err_str or "RateLimitReached" in err_str or "rate limit" in err_str.lower():
+                wait = 60 * (attempt + 1)
+                print(f"{i:<4} {sample_id:<26} Rate limited, waiting {wait}s (attempt {attempt + 1}/3)…")
+                time.sleep(wait)
+            elif "Expecting value" in err_str or "JSONDecodeError" in err_str:
+                print(f"{i:<4} {sample_id:<26} Parse error, retrying (attempt {attempt + 1}/3)…")
+                time.sleep(5)
+            else:
+                break
+        if last_err is not None:
+            errors.append(f"{sample_id}: {last_err}")
+            print(f"{i:<4} {sample_id:<26} ERROR: {last_err}")
 
     if not results:
         print("\nNo successful runs — cannot compute metrics.", file=sys.stderr)
