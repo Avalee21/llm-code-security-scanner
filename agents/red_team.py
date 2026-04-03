@@ -3,8 +3,20 @@ import os
 import re
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
-from utils.llm import get_llm
+from utils.llm import get_llm, parse_llm_json
 from utils.schemas import JudgeVerdict, RedTeamFinding, VerificationResult
+
+_SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _dedup_by_cwe(findings: list[RedTeamFinding]) -> list[RedTeamFinding]:
+    """Keep only the highest-severity finding per CWE ID."""
+    best: dict[str, RedTeamFinding] = {}
+    for f in findings:
+        prev = best.get(f.cwe_id)
+        if prev is None or _SEVERITY_RANK.get(f.severity, 9) < _SEVERITY_RANK.get(prev.severity, 9):
+            best[f.cwe_id] = f
+    return list(best.values())
 
 load_dotenv()
 
@@ -23,6 +35,7 @@ Quality over quantity:
 - Only report vulnerabilities you are HIGHLY CONFIDENT about — each finding must have a clear, concrete exploit path grounded in the actual code.
 - Do NOT report speculative or theoretical vulnerabilities. If the code already mitigates the issue (e.g. parameterized queries, snprintf with sizeof, realpath + prefix check, explicit NULL checks, bounds validation), do NOT flag it.
 - Focus on the SINGLE BEST CWE classification for each distinct vulnerability. Do not report multiple overlapping CWEs for the same code pattern.
+- Do NOT report more than one finding per CWE category. If you see two issues that map to the same CWE (e.g. two CWE-22 path traversal issues), combine them into one finding covering the most severe instance.
 - Only report findings with severity medium or above.
 - If the code is genuinely safe and well-written, return an empty array. Do not manufacture findings.
 
@@ -96,21 +109,9 @@ def run_red_team(code: str) -> list[RedTeamFinding]:
 
     chain = prompt | llm
     response = chain.invoke({"code": code})
-    
-    raw = response.content.strip()
-    
-    # Strip markdown code fences if present
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'", "'", raw)
-    # Fix invalid JSON escapes (e.g. \s, \d) that LLMs sometimes produce in code snippets
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
-    return [RedTeamFinding(**item) for item in data]
+    data = parse_llm_json(response.content)
+    findings = [RedTeamFinding(**item) for item in data]
+    return _dedup_by_cwe(findings)
 
 
 def run_red_team_diff(code: str, filename: str) -> list[RedTeamFinding]:
@@ -124,19 +125,9 @@ def run_red_team_diff(code: str, filename: str) -> list[RedTeamFinding]:
 
     chain = prompt | llm
     response = chain.invoke({"code": code, "filename": filename})
-
-    raw = response.content.strip()
-
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'" , "'", raw)
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
-    return [RedTeamFinding(**item) for item in data]
+    data = parse_llm_json(response.content)
+    findings = [RedTeamFinding(**item) for item in data]
+    return _dedup_by_cwe(findings)
 
 
 # ── Patch verification ────────────────────────────────────────────
@@ -221,18 +212,7 @@ def run_verification(
         "code": code,
         "patches_block": _serialize_patches(verdicts, findings),
     })
-
-    raw = response.content.strip()
-
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'", "'", raw)
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
+    data = parse_llm_json(response.content)
 
     results = [VerificationResult(**item) for item in data]
     all_valid = all(r.patch_valid for r in results)

@@ -7,7 +7,9 @@ Set LLM_BACKEND=foundry (and FOUNDRY_ENDPOINT_URL / FOUNDRY_API_KEY)
 Defaults to Groq when LLM_BACKEND is unset or set to "groq".
 """
 
+import json
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -59,3 +61,68 @@ def get_llm(temperature: float = 0.0) -> BaseChatModel:
         temperature=temperature,
         api_key=os.getenv("GROQ_API_KEY"),
     )
+
+
+def parse_llm_json(raw: str | None) -> list | dict:
+    """Parse LLM output as JSON with cleanup and fallback extraction."""
+    if not raw:
+        return []
+    text = raw.strip()
+    if not text:
+        return []
+
+    # Strip markdown code fences
+    if text.startswith("```"):
+        parts = text.split("```")
+        text = parts[1] if len(parts) >= 3 else parts[-1]
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip()
+        if not text:
+            return []
+
+    # Fix common LLM JSON issues
+    text = re.sub(r"\\'", "'", text)
+    text = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', text)
+    text = re.sub(r',\s*([}\]])', r'\1', text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback: extract the first JSON array or object via bracket matching
+    for start_char, end_char in [('[', ']'), ('{', '}')]:
+        start = text.find(start_char)
+        if start == -1:
+            continue
+        depth = 0
+        in_string = False
+        escape = False
+        for i in range(start, len(text)):
+            c = text[i]
+            if escape:
+                escape = False
+                continue
+            if c == '\\':
+                escape = True
+                continue
+            if c == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if c == start_char:
+                depth += 1
+            elif c == end_char:
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:i + 1]
+                    candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break
+
+    # Nothing parseable found — return empty list rather than crashing the pipeline
+    return []

@@ -1,7 +1,7 @@
 import json
 import re
 from langchain_core.prompts import ChatPromptTemplate
-from utils.llm import get_llm
+from utils.llm import get_llm, parse_llm_json
 from utils.schemas import RedTeamFinding
 
 SYSTEM_PROMPT = """You are a CWE (Common Weakness Enumeration) classification specialist.
@@ -72,15 +72,7 @@ def _serialize_findings(findings: list[RedTeamFinding]) -> str:
 
 
 def _parse_and_apply(raw: str, findings: list[RedTeamFinding]) -> list[RedTeamFinding]:
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'", "'", raw)
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
+    data = parse_llm_json(raw)
 
     correction_map = {item["finding_id"]: item for item in data}
     result = []

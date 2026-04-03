@@ -50,8 +50,13 @@ class EvalMetrics:
 
 
 def final_verdicts(report: DebateReport):
-    """Return round2_verdicts if present, otherwise round1 verdicts."""
-    return report.round2_verdicts if report.round2_verdicts is not None else report.verdicts
+    """Return merged verdicts: round2 verdicts override round1 where present."""
+    if report.round2_verdicts is None:
+        return report.verdicts
+    # Round 2 only covers findings that were confirmed in round 1.
+    # Merge: use round 2 verdict when available, fall back to round 1.
+    r2_map = {v.finding_id: v for v in report.round2_verdicts}
+    return [r2_map.get(v.finding_id, v) for v in report.verdicts]
 
 
 def _cwe_matched_flag(report: DebateReport, expected_cwe: str) -> bool:
@@ -80,7 +85,12 @@ def classify_sample(
     flagged = any(v.confirmed for v in final_verdicts(report))
 
     if expected_cwe is not None:
-        cwe_flagged = _cwe_matched_flag(report, expected_cwe)
+        if has_vulnerability:
+            # Vulnerable sample: only count TP when correct CWE confirmed
+            cwe_flagged = _cwe_matched_flag(report, expected_cwe)
+        else:
+            # Safe sample: any confirmed finding is FP regardless of CWE
+            cwe_flagged = flagged
     else:
         cwe_flagged = flagged
 

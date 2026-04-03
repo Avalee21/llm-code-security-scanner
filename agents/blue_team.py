@@ -3,7 +3,7 @@ import os
 import re
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
-from utils.llm import get_llm
+from utils.llm import get_llm, parse_llm_json
 from utils.schemas import BlueTeamDefense, RedTeamFinding
 
 load_dotenv()
@@ -120,19 +120,7 @@ def run_blue_team(findings: list[RedTeamFinding], code: str) -> list[BlueTeamDef
         "code": code,
         "findings_block": _serialize_findings(findings),
     })
-
-    raw = response.content.strip()
-
-    # Strip markdown code fences if present
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'", "'", raw)
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
+    data = parse_llm_json(response.content)
     return [BlueTeamDefense(**item) for item in data]
 
 def run_blue_team_diff(
@@ -155,17 +143,7 @@ def run_blue_team_diff(
         "filename": filename,
         "findings_block": _serialize_findings(findings),
     })
-
-    raw = response.content.strip()
-
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'" , "'", raw)
-    data = json.loads(raw)
+    data = parse_llm_json(response.content)
     return [BlueTeamDefense(**item) for item in data]
 
 
@@ -247,15 +225,5 @@ def run_blue_team_round2(
     ])
     chain = prompt | llm
     response = chain.invoke({"code": code, "findings_block": findings_block})
-
-    raw = response.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'", "'", raw)
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
+    data = parse_llm_json(response.content)
     return [BlueTeamDefense(**item) for item in data]

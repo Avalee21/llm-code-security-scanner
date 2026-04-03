@@ -143,15 +143,47 @@ python -m scripts.eval_baseline --limit 10
 
 Both scripts print a per-sample table, overall precision/recall/F1, CWE-matched metrics, and a per-CWE breakdown, then log everything to MLflow.
 
-### Evaluation Metrics
+### Evaluation Methodology
 
-The evaluation tracks two levels of accuracy:
+The evaluation uses **CWE-strict classification**: a sample is only counted as a True Positive when the system confirms a finding with the **correct CWE type**, not just any vulnerability.
 
-- **Binary detection** — did the system correctly flag vulnerable code and clear safe code? (precision, recall, F1, FPR)
-- **CWE-matched detection** — did the system identify the *correct vulnerability type*? Only counts as TP when a confirmed finding carries the matching CWE. (cwe\_precision, cwe\_recall, cwe\_f1, cwe\_fpr)
-- **Finding precision** — of all confirmed findings, what fraction match the ground-truth CWE? Measures Red Team noise.
+#### Per-sample classification
 
-This prints a per-sample table, overall precision/recall/F1, and a per-CWE breakdown, then logs everything to an MLflow run named `golden-set-eval`.
+Each golden set sample has a ground-truth label (`vulnerable` or `safe`) and an expected CWE (e.g. CWE-798).
+
+| Ground Truth | System Result | Classification |
+|---|---|---|
+| Vulnerable | Confirmed finding with correct CWE | **TP** (True Positive) |
+| Vulnerable | Confirmed finding with wrong CWE | **FN** (False Negative) — detected something, but wrong type |
+| Vulnerable | No finding confirmed | **FN** (False Negative) — missed entirely |
+| Safe | Any finding confirmed | **FP** (False Positive) — regardless of CWE |
+| Safe | No finding confirmed | **TN** (True Negative) |
+
+> **Why not count wrong-CWE detections as TP?** A scanner that flags CWE-327 on a CWE-798 sample is not useful to a developer — they'd investigate the wrong issue. Requiring the correct CWE makes the evaluation meaningful for real-world use.
+
+#### Aggregate metrics
+
+From the per-sample TP/FP/TN/FN counts:
+
+| Metric | Formula | What it measures |
+|---|---|---|
+| **Precision** | TP / (TP + FP) | Of flagged samples, how many were actually vulnerable with the correct CWE |
+| **Recall** | TP / (TP + FN) | Of vulnerable samples, how many were correctly identified with the right CWE |
+| **F1** | 2 × Precision × Recall / (Precision + Recall) | Harmonic mean — balances precision and recall |
+| **FPR** | FP / (FP + TN) | Of safe samples, how many were incorrectly flagged |
+
+#### Per-CWE breakdown
+
+The same TP/FP/TN/FN + F1 metrics are also computed per CWE category (e.g. CWE-22, CWE-78, CWE-798) to identify which vulnerability types the system handles well and which it struggles with.
+
+#### What "confirmed" means
+
+A finding is "confirmed" when it survives the full adversarial debate:
+1. Red Team proposes it
+2. Blue Team challenges it (Round 1, optionally Round 2)
+3. Judge delivers a final verdict
+
+Only findings the Judge confirms in the final round count. If Round 2 happened for a finding, the Round 2 verdict overrides Round 1.
 
 ## Viewing Results in MLflow
 

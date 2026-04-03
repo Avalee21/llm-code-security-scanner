@@ -18,7 +18,7 @@ import sys
 import mlflow
 from langchain_core.prompts import ChatPromptTemplate
 
-from utils.llm import get_llm, get_llm_info
+from utils.llm import get_llm, get_llm_info, parse_llm_json
 from utils.metrics import SampleResult, classify_sample, compute_metrics
 from utils.schemas import (
     BlueTeamDefense,
@@ -56,14 +56,7 @@ def load_golden_set() -> list[dict]:
 
 def _parse_response(raw: str) -> dict:
     """Parse the LLM JSON response, stripping code fences if present."""
-    raw = raw.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-    raw = re.sub(r"\\'", "'", raw)
-    return json.loads(raw)
+    return parse_llm_json(raw)
 
 
 def _to_debate_report(result: dict) -> DebateReport:
@@ -89,6 +82,29 @@ def _to_debate_report(result: dict) -> DebateReport:
             verdicts=[verdict],
         )
 
+    return DebateReport(findings=[], defenses=[], verdicts=[])
+
+
+def run_baseline_single(code: str) -> DebateReport:
+    """Run a single baseline classification and return a DebateReport.
+
+    Retries once on parse failure; returns empty report (safe) if both fail.
+    """
+    llm = get_llm()
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        ("human", USER_PROMPT),
+    ])
+    chain = prompt | llm
+    for _attempt in range(2):
+        response = chain.invoke({"code": code})
+        try:
+            result = _parse_response(response.content)
+            if isinstance(result, dict):
+                return _to_debate_report(result)
+        except (json.JSONDecodeError, Exception):
+            continue
+    # Both attempts failed — treat as "no findings"
     return DebateReport(findings=[], defenses=[], verdicts=[])
 
 

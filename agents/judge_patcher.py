@@ -5,7 +5,7 @@ import re
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
 
-from utils.llm import get_llm
+from utils.llm import get_llm, parse_llm_json
 from utils.schemas import BlueTeamDefense, JudgeVerdict, RedTeamFinding
 
 load_dotenv()
@@ -216,17 +216,7 @@ def run_judge_diff(
         "filename": filename,
         "debate_block": _serialize_debate(findings, defenses),
     })
-
-    raw = response.content.strip()
-
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'" , "'", raw)
-    data = json.loads(raw)
+    data = parse_llm_json(response.content)
     verdict_map = {item["finding_id"]: item for item in data}
 
     verdicts = []
@@ -335,17 +325,7 @@ def run_judge_round2(
     ])
     chain = prompt | llm
     response = chain.invoke({"code": code, "debate_block": debate_block})
-
-    raw = response.content.strip()
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'", "'", raw)
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
+    data = parse_llm_json(response.content)
     verdict_map = {item["finding_id"]: item for item in data}
 
     verdicts = []
