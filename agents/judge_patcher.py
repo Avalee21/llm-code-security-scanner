@@ -34,15 +34,14 @@ CWE exploit confirmation rules — if the code matches these patterns, CONFIRM t
 - CWE-89 CONFIRM if: user input is concatenated directly into a SQL string (sprintf, +, f-string) rather than using parameterized queries.
 - CWE-190 CONFIRM if: arithmetic on user-controlled integers is performed without bounds checking before use (e.g. malloc(user_size * element_size) without overflow check).
 - CWE-476 CONFIRM if: a pointer that may be NULL is dereferenced without a NULL check immediately before.
-- CWE-798 CONFIRM if: a hardcoded string literal is used directly as a password, API key, private key, or authentication secret.
-4. CWE CORRECTNESS: Is the CWE classification accurate for the specific code pattern? A finding with the wrong CWE should be dismissed.
-5. SEVERITY ACCURACY: Is the stated severity proportionate to real-world impact if exploited?
+- CWE-798 CONFIRM if: a hardcoded string literal, byte array, or hex constant is used directly as a password, API key, private key, cryptographic key, or authentication secret.
+4. SEVERITY ACCURACY: Is the stated severity proportionate to real-world impact if exploited?
 
 Rules:
 - You must evaluate EVERY finding. Do not skip any.
 - Base your verdict on the code, not on which side sounds more confident.
 - The burden of proof is on the Red Team. If the exploit argument is vague, speculative, or does not match the actual code behaviour, dismiss the finding.
-- When in doubt, favour dismissing over confirming. Only confirm findings with clear, code-backed evidence of exploitability.
+- This is Round 1 of a two-round process. Confirmed findings will face a second Blue Team challenge in Round 2, so err on the side of CONFIRMING when evidence is ambiguous. Only dismiss findings where the Blue Team provides clear, code-backed proof of an effective mitigation. Reserve strict filtering for Round 2.
 - For CONFIRMED findings: generate a minimal code patch that fixes the vulnerability. Show only the corrected version of the vulnerable code snippet — not a diff. The patch must preserve the original code's intent while eliminating the security flaw.
   Patch quality rules (MUST follow):
   a. Only use standard library functions and APIs that actually exist (e.g. fopen modes are only: "r", "w", "a", "rb", "wb", "r+", "w+" — never invent modes like "re").

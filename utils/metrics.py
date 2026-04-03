@@ -43,6 +43,7 @@ class EvalMetrics:
     total_findings: int = 0
     total_confirmed: int = 0
     cwe_matched_confirmed: int = 0
+    irrelevant_confirmed: int = 0   # confirmed findings with wrong CWE on vulnerable samples
     finding_precision: float = 0.0  # cwe_matched_confirmed / total_confirmed
 
     per_cwe: dict[str, dict] = field(default_factory=dict)
@@ -154,9 +155,14 @@ def compute_metrics(results: list[SampleResult]) -> EvalMetrics:
             1 for v in final_verdicts(r.report)
             if v.confirmed and cwe_by_finding.get(v.finding_id) == r.cwe_id
         )
+        n_irrelevant = sum(
+            1 for v in final_verdicts(r.report)
+            if v.confirmed and cwe_by_finding.get(v.finding_id) != r.cwe_id
+        ) if r.has_vulnerability else 0
         metrics.total_findings += n_findings
         metrics.total_confirmed += n_confirmed
         metrics.cwe_matched_confirmed += n_cwe_matched
+        metrics.irrelevant_confirmed += n_irrelevant
 
         # Per-sample record
         metrics.sample_results.append({
@@ -170,6 +176,7 @@ def compute_metrics(results: list[SampleResult]) -> EvalMetrics:
             "findings_count": n_findings,
             "confirmed_count": n_confirmed,
             "cwe_matched_confirmed_count": n_cwe_matched,
+            "irrelevant_count": n_irrelevant,
         })
 
     # Aggregate rates

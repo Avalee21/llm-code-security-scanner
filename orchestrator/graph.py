@@ -42,7 +42,8 @@ def red_team_node(state: PipelineState) -> dict:
 
 def cwe_classifier_node(state: PipelineState) -> dict:
     findings = run_cwe_classifier(state["findings"], state["code"])
-    return {"findings": findings}
+    report = state["report"].model_copy(update={"findings": findings})
+    return {"findings": findings, "report": report}
 
 
 def blue_team_node(state: PipelineState) -> dict:
@@ -97,30 +98,30 @@ def verification_node(state: PipelineState) -> dict:
 
 
 def _should_run_round2(state: PipelineState) -> str:
-    return "blue_team_r2" if any(v.confirmed for v in state["verdicts"]) else "verification"
+    return "blue_team_r2" if any(v.confirmed for v in state["verdicts"]) else "cwe_classifier"
 
 
 def build_graph() -> StateGraph:
     graph = StateGraph(PipelineState)
 
     graph.add_node("red_team", red_team_node)
-    graph.add_node("cwe_classifier", cwe_classifier_node)
     graph.add_node("blue_team", blue_team_node)
     graph.add_node("judge", judge_node)
     graph.add_node("blue_team_r2", blue_team_r2_node)
     graph.add_node("judge_r2", judge_r2_node)
+    graph.add_node("cwe_classifier", cwe_classifier_node)
     graph.add_node("verification", verification_node)
 
     graph.set_entry_point("red_team")
-    graph.add_edge("red_team", "cwe_classifier")
-    graph.add_edge("cwe_classifier", "blue_team")
+    graph.add_edge("red_team", "blue_team")
     graph.add_edge("blue_team", "judge")
     graph.add_conditional_edges("judge", _should_run_round2, {
         "blue_team_r2": "blue_team_r2",
-        "verification": "verification",
+        "cwe_classifier": "cwe_classifier",
     })
     graph.add_edge("blue_team_r2", "judge_r2")
-    graph.add_edge("judge_r2", "verification")
+    graph.add_edge("judge_r2", "cwe_classifier")
+    graph.add_edge("cwe_classifier", "verification")
     graph.add_edge("verification", END)
 
     return graph.compile()
@@ -177,7 +178,6 @@ def run_diff_pipeline(
 ) -> DebateReport:
     """Run the Red → Blue → Judge → Verification pipeline on one annotated diff file."""
     findings = run_red_team_diff(annotated_code, filename)
-    findings = run_cwe_classifier_diff(findings, annotated_code, filename)
     defenses = run_blue_team_diff(findings, annotated_code, filename)
     verdicts = run_judge_diff(findings, defenses, annotated_code, filename)
     report = DebateReport(
@@ -192,6 +192,9 @@ def run_diff_pipeline(
         verdicts_r2 = run_judge_round2(confirmed, verdicts, defenses_r2, annotated_code)
         report.round2_defenses = defenses_r2
         report.round2_verdicts = verdicts_r2
+    # CWE classifier runs after debate to avoid influencing verdicts
+    findings = run_cwe_classifier_diff(findings, annotated_code, filename)
+    report.findings = findings
     passed, results = run_verification(annotated_code, final_verdicts(report), findings)
     report.verification_passed = passed
     report.verification_results = results if results else None

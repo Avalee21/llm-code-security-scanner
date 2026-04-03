@@ -135,7 +135,7 @@ python -m scripts.eval_golden_set                # all 30 samples
 python -m scripts.eval_golden_set --limit 10      # first 10 samples
 ```
 
-Run the single-pass baseline (one LLM call per sample, no debate) for comparison:
+Run the Red-Team-Only baseline (same Red Team prompt, all findings auto-confirmed, no debate) for comparison:
 
 ```bash
 python -m scripts.eval_baseline --limit 10
@@ -145,21 +145,44 @@ Both scripts print a per-sample table, overall precision/recall/F1, CWE-matched 
 
 ### Evaluation Methodology
 
-The evaluation uses **CWE-strict classification**: a sample is only counted as a True Positive when the system confirms a finding with the **correct CWE type**, not just any vulnerability.
+The primary evaluation uses **binary detection classification**: a sample is counted as a True Positive when the system confirms **any** vulnerability finding, regardless of CWE type. CWE-matched metrics are computed as a secondary measure.
 
-#### Per-sample classification
+#### Why binary detection as primary?
 
-Each golden set sample has a ground-truth label (`vulnerable` or `safe`) and an expected CWE (e.g. CWE-798).
+The debate pipeline's core contribution is adversarial false-positive filtering (Blue Team + Judge), not CWE classification. Using binary metrics isolates this contribution cleanly. CWE accuracy is a separate sub-task handled by the CWE Classifier agent — mixing it into the primary metric would penalise the debate pipeline for classifier errors unrelated to the debate's quality.
+
+#### Baseline: Red Team Only
+
+The baseline uses the **exact same Red Team prompt** as the debate pipeline, but auto-confirms all findings without any adversarial challenge. This creates a fair apples-to-apples comparison:
+
+| | Red Team Only (baseline) | Debate Pipeline |
+|---|---|---|
+| Detection | Red Team prompt | Same Red Team prompt |
+| Filtering | None — all auto-confirmed | Blue Team + Judge + Round 2 |
+| Measured difference | — | Exactly the value added by the adversarial debate |
+
+#### Per-sample classification (primary — binary detection)
+
+Each golden set sample has a ground-truth label (`vulnerable` or `safe`).
 
 | Ground Truth | System Result | Classification |
 |---|---|---|
-| Vulnerable | Confirmed finding with correct CWE | **TP** (True Positive) |
-| Vulnerable | Confirmed finding with wrong CWE | **FN** (False Negative) — detected something, but wrong type |
-| Vulnerable | No finding confirmed | **FN** (False Negative) — missed entirely |
-| Safe | Any finding confirmed | **FP** (False Positive) — regardless of CWE |
+| Vulnerable | Any finding confirmed | **TP** (True Positive) |
+| Vulnerable | No finding confirmed | **FN** (False Negative) |
+| Safe | Any finding confirmed | **FP** (False Positive) |
 | Safe | No finding confirmed | **TN** (True Negative) |
 
-> **Why not count wrong-CWE detections as TP?** A scanner that flags CWE-327 on a CWE-798 sample is not useful to a developer — they'd investigate the wrong issue. Requiring the correct CWE makes the evaluation meaningful for real-world use.
+#### Per-sample classification (secondary — CWE-matched)
+
+A stricter view where a vulnerable sample is only TP when a confirmed finding carries the **correct CWE type**:
+
+| Ground Truth | System Result | Classification |
+|---|---|---|
+| Vulnerable | Confirmed finding with correct CWE | **TP** |
+| Vulnerable | Confirmed finding with wrong CWE | **FN** — detected something, but wrong type |
+| Vulnerable | No finding confirmed | **FN** — missed entirely |
+| Safe | Any finding confirmed | **FP** — regardless of CWE |
+| Safe | No finding confirmed | **TN** |
 
 #### Aggregate metrics
 
@@ -195,7 +218,7 @@ mlflow ui
 
 Open http://127.0.0.1:5000 in your browser. Results are under the **code-security-scanner** experiment. Each run contains:
 
-- **Params** — model name, backend, prompt version hashes, method (`debate-pipeline` or `baseline-single-pass`)
+- **Params** — model name, backend, prompt version hashes, method (`debate-pipeline` or `red-team-only`)
 - **Metrics** — precision, recall, F1, false positive rate, TP/FP/TN/FN counts (both binary and CWE-matched)
 - **Artifacts** — `per_sample_results.json`, `per_cwe_results.json`
 
@@ -224,7 +247,7 @@ utils/
   github.py                GitHub API integration (PR/commit diff fetching)
 scripts/
   eval_golden_set.py       Debate pipeline evaluation
-  eval_baseline.py         Single-pass baseline evaluation
+  eval_baseline.py         Red-Team-Only baseline evaluation
   select_golden_set.py     Script used to curate golden set from CASTLE-C250
   modal_server.py          vLLM server deployment on Modal
 data/

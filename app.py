@@ -12,7 +12,7 @@ import mlflow
 from mlflow.tracking import MlflowClient
 
 from orchestrator.graph import run_pipeline, run_repo_scan
-from scripts.eval_baseline import run_baseline_single, SYSTEM_PROMPT as BASELINE_PROMPT
+from scripts.eval_baseline import run_baseline_single
 from utils.github import (
     parse_github_url,
     fetch_diffs_for_target,
@@ -112,12 +112,13 @@ def render_report(report: DebateReport, code: str | None = None):
 
             # ── Debate tabs (show R2 tabs when round 2 happened for this finding)
             if had_round2:
-                tab_red, tab_blue, tab_judge_r1, tab_blue_r2, tab_judge = st.tabs([
+                tab_red, tab_blue, tab_judge_r1, tab_blue_r2, tab_judge, tab_cwe = st.tabs([
                     "🔴 Red Team",
                     "🔵 Blue Team R1",
                     "⚖️ Judge R1",
                     "🔵 Blue Team R2",
                     "⚖️ Final Verdict",
+                    "🏷️ CWE Classifier",
                 ])
 
                 with tab_red:
@@ -158,11 +159,19 @@ def render_report(report: DebateReport, code: str | None = None):
                             st.caption("No suggested fix available yet.")
                     else:
                         st.caption("No verdict returned.")
+
+                with tab_cwe:
+                    if finding.original_cwe_id and finding.original_cwe_id != finding.cwe_id:
+                        st.warning(f"Reclassified: **{finding.original_cwe_id}** → **{finding.cwe_id}** {finding.cwe_name}")
+                    else:
+                        st.success(f"CWE confirmed: **{finding.cwe_id}** {finding.cwe_name}")
+
             else:
-                tab_red, tab_blue, tab_judge = st.tabs([
+                tab_red, tab_blue, tab_judge, tab_cwe = st.tabs([
                     "🔴 Red Team (Attack)",
                     "🔵 Blue Team (Defense)",
                     "⚖️ Judge (Verdict)",
+                    "🏷️ CWE Classifier",
                 ])
 
                 with tab_red:
@@ -190,6 +199,12 @@ def render_report(report: DebateReport, code: str | None = None):
                             st.caption("No suggested fix available yet.")
                     else:
                         st.caption("No verdict returned.")
+
+                with tab_cwe:
+                    if finding.original_cwe_id and finding.original_cwe_id != finding.cwe_id:
+                        st.warning(f"Reclassified: **{finding.original_cwe_id}** → **{finding.cwe_id}** {finding.cwe_name}")
+                    else:
+                        st.success(f"CWE confirmed: **{finding.cwe_id}** {finding.cwe_name}")
 
     # ── Verification status
     if report.verification_passed is not None:
@@ -449,7 +464,7 @@ def _render_eval_config(params: dict[str, str]):
 
 
 def _render_eval_metrics(metrics: dict[str, float], per_cwe: dict | None = None, sample_results: list | None = None):
-    """Render evaluation metrics (CWE-strict: correct CWE required for TP)."""
+    """Render evaluation metrics (binary detection as primary)."""
 
     def _pct(val) -> str:
         v = float(val or 0) * 100
@@ -459,18 +474,54 @@ def _render_eval_metrics(metrics: dict[str, float], per_cwe: dict | None = None,
             return "100 %"
         return f"{v:.1f} %"
 
-    # ── Accuracy ─────────────────────────────────────────────
+    # ── Primary: binary detection metrics ─────────────────
+    # Fall back to cwe_* keys for backward compat with old MLflow runs
+    st.markdown("##### Binary Detection (any confirmed finding = detection)")
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("TP", int(metrics.get("cwe_tp", metrics.get("tp", 0))))
-    c2.metric("FP", int(metrics.get("cwe_fp", metrics.get("fp", 0))))
-    c3.metric("TN", int(metrics.get("cwe_tn", metrics.get("tn", 0))))
-    c4.metric("FN", int(metrics.get("cwe_fn", metrics.get("fn", 0))))
+    c1.metric("TP", int(metrics.get("tp", metrics.get("cwe_tp", 0))))
+    c2.metric("FP", int(metrics.get("fp", metrics.get("cwe_fp", 0))))
+    c3.metric("TN", int(metrics.get("tn", metrics.get("cwe_tn", 0))))
+    c4.metric("FN", int(metrics.get("fn", metrics.get("cwe_fn", 0))))
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Precision", _pct(metrics.get("cwe_precision", metrics.get("precision", 0))))
-    c2.metric("Recall", _pct(metrics.get("cwe_recall", metrics.get("recall", 0))))
-    c3.metric("F1", _pct(metrics.get("cwe_f1", metrics.get("f1", 0))))
-    c4.metric("FPR", _pct(metrics.get("cwe_false_positive_rate", metrics.get("false_positive_rate", 0))))
+    c1.metric("Precision", _pct(metrics.get("precision", metrics.get("cwe_precision", 0))))
+    c2.metric("Recall", _pct(metrics.get("recall", metrics.get("cwe_recall", 0))))
+    c3.metric("F1", _pct(metrics.get("f1", metrics.get("cwe_f1", 0))))
+    c4.metric("FPR", _pct(metrics.get("false_positive_rate", metrics.get("cwe_false_positive_rate", 0))))
+
+    # ── Secondary: CWE-matched metrics ─────────────────
+    cwe_tp = metrics.get("cwe_tp", 0)
+    cwe_fp = metrics.get("cwe_fp", 0)
+    cwe_tn = metrics.get("cwe_tn", 0)
+    cwe_fn = metrics.get("cwe_fn", 0)
+    cwe_f1 = metrics.get("cwe_f1", 0)
+    # Only show if CWE-matched data is available
+    if cwe_tp or cwe_fp or cwe_f1:
+        st.divider()
+        st.markdown("##### CWE-Matched (correct vulnerability type required for TP)")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("CWE TP", int(cwe_tp))
+        c2.metric("CWE FP", int(cwe_fp))
+        c3.metric("CWE TN", int(cwe_tn))
+        c4.metric("CWE FN", int(cwe_fn))
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("CWE Precision", _pct(metrics.get("cwe_precision", 0)))
+        c2.metric("CWE Recall", _pct(metrics.get("cwe_recall", 0)))
+        c3.metric("CWE F1", _pct(cwe_f1))
+        c4.metric("CWE FPR", _pct(metrics.get("cwe_false_positive_rate", 0)))
+
+        # Noise: confirmed findings with wrong CWE on vulnerable samples
+        irrelevant = int(metrics.get("irrelevant_confirmed", 0))
+        total_conf = int(metrics.get("total_confirmed", 0))
+        if total_conf > 0:
+            fp_val = metrics.get("finding_precision", 0)
+            st.metric("Finding Precision", _pct(fp_val),
+                      help="correct-CWE confirmed / total confirmed (penalises wrong-CWE noise)")
+            st.caption(
+                f"Finding-level: {int(metrics.get('cwe_matched_confirmed', 0))} correct-CWE confirmed, "
+                f"{irrelevant} irrelevant-CWE confirmed out of {total_conf} total confirmed"
+            )
 
     # ── Details (collapsed) ──────────────────────────────────
     with st.expander("📊 Per-CWE & Per-Sample Details"):
@@ -480,20 +531,26 @@ def _render_eval_metrics(metrics: dict[str, float], per_cwe: dict | None = None,
                 c = per_cwe[cwe_id]
                 rows.append({
                     "CWE": cwe_id,
-                    "TP": c.get("cwe_tp", c.get("tp", 0)),
-                    "FP": c.get("cwe_fp", c.get("fp", 0)),
-                    "TN": c.get("cwe_tn", c.get("tn", 0)),
-                    "FN": c.get("cwe_fn", c.get("fn", 0)),
-                    "F1": _pct(c.get("cwe_f1", c.get("f1", 0))),
+                    "TP": c.get("tp", 0),
+                    "FP": c.get("fp", 0),
+                    "TN": c.get("tn", 0),
+                    "FN": c.get("fn", 0),
+                    "F1": _pct(c.get("f1", 0)),
                 })
             st.dataframe(rows, use_container_width=True, hide_index=True)
 
         if sample_results:
             for sr in sample_results:
-                cls = sr.get("cwe_classification", sr.get("classification", ""))
+                cls = sr.get("classification", "")
+                has_noise = (cls == "TP" and sr.get("irrelevant_count", 0) > 0)
                 icon = {"TP": "✅", "TN": "✅", "FP": "❌", "FN": "⚠️"}.get(cls, "❓")
+                if has_noise:
+                    icon = "⚡"
+                    cls_display = "TP+noise"
+                else:
+                    cls_display = cls
                 label = (
-                    f"{icon} **{sr['sample_id']}** ({sr['cwe_id']}) — {cls}"
+                    f"{icon} **{sr['sample_id']}** ({sr['cwe_id']}) — {cls_display}"
                     f"  |  {sr.get('findings_count', '?')} findings, {sr.get('confirmed_count', '?')} confirmed"
                 )
                 st.markdown(label)
@@ -513,7 +570,7 @@ with tab_eval:
     if eval_section == "🚀 Eval All (run now)":
         col_method, col_limit, col_info = st.columns([1, 1, 2])
         with col_method:
-            eval_method = st.selectbox("Method", ["Debate Pipeline", "Baseline (single-pass)"])
+            eval_method = st.selectbox("Method", ["Debate Pipeline", "Red Team Only (no debate)"])
         with col_limit:
             sample_limit = st.selectbox("Samples", [5, 10, 30], index=1)
         with col_info:
@@ -523,8 +580,10 @@ with tab_eval:
                 f"**Model:** {llm_info['llm_model']}"
             )
 
-        is_baseline = eval_method == "Baseline (single-pass)"
-        method_label = "baseline-single-pass" if is_baseline else "debate-pipeline"
+        is_baseline = eval_method == "Red Team Only (no debate)"
+        method_label = "red-team-only" if is_baseline else "debate-pipeline"
+
+        log_mlflow = st.checkbox("Log to MLflow", value=True, key="eval_log_mlflow")
 
         if st.button("🚀 Run Evaluation", key="run_eval"):
             try:
@@ -563,6 +622,15 @@ with tab_eval:
                         cwe_flagged=cwe_flagged,
                     ))
                     icon = {"TP": "✅", "TN": "✅", "FP": "❌", "FN": "⚠️"}.get(classification, "❓")
+                    # Mark TP with wrong-CWE noise
+                    cwe_by_f = {f.finding_id: f.cwe_id for f in report.findings}
+                    n_irr = sum(
+                        1 for v in final_verdicts(report)
+                        if v.confirmed and cwe_by_f.get(v.finding_id) != s["cwe_id"]
+                    ) if s["has_vulnerability"] and classification == "TP" else 0
+                    if n_irr > 0:
+                        icon = "⚡"
+                        classification = "TP+noise"
                     status_area.caption(f"{icon} {s['id']}: {classification}")
                 except Exception as e:
                     errors.append(f"{s['id']}: {e}")
@@ -581,7 +649,9 @@ with tab_eval:
             st.session_state["eval_method"] = method_label
 
             # ── Log aggregate results to MLflow ──────────────
-            try:
+            log_mlflow = st.session_state.get("eval_log_mlflow", True)
+            if log_mlflow:
+              try:
                 import hashlib
                 from agents.red_team import SYSTEM_PROMPT as RED_PROMPT
                 from agents.blue_team import SYSTEM_PROMPT as BLUE_PROMPT
@@ -617,6 +687,7 @@ with tab_eval:
                         "total_findings": eval_metrics.total_findings,
                         "total_confirmed": eval_metrics.total_confirmed,
                         "cwe_matched_confirmed": eval_metrics.cwe_matched_confirmed,
+                        "irrelevant_confirmed": eval_metrics.irrelevant_confirmed,
                         "finding_precision": eval_metrics.finding_precision,
                     })
                     mlflow.log_text(
@@ -630,7 +701,7 @@ with tab_eval:
                     if errors:
                         mlflow.log_text("\n".join(errors), "errors.txt")
                 st.success("✅ Results logged to MLflow")
-            except Exception as e:
+              except Exception as e:
                 st.warning(f"Failed to log to MLflow: {e}")
 
         if "eval_metrics" in st.session_state:
@@ -652,15 +723,21 @@ with tab_eval:
             st.divider()
             _render_eval_metrics(
                 {
+                    "tp": eval_metrics.tp, "fp": eval_metrics.fp,
+                    "tn": eval_metrics.tn, "fn": eval_metrics.fn,
+                    "precision": eval_metrics.precision,
+                    "recall": eval_metrics.recall,
+                    "f1": eval_metrics.f1,
+                    "false_positive_rate": eval_metrics.false_positive_rate,
                     "cwe_tp": eval_metrics.cwe_tp, "cwe_fp": eval_metrics.cwe_fp,
                     "cwe_tn": eval_metrics.cwe_tn, "cwe_fn": eval_metrics.cwe_fn,
                     "cwe_precision": eval_metrics.cwe_precision,
                     "cwe_recall": eval_metrics.cwe_recall,
                     "cwe_f1": eval_metrics.cwe_f1,
                     "cwe_false_positive_rate": eval_metrics.cwe_false_positive_rate,
-                    "total_findings": eval_metrics.total_findings,
                     "total_confirmed": eval_metrics.total_confirmed,
                     "cwe_matched_confirmed": eval_metrics.cwe_matched_confirmed,
+                    "irrelevant_confirmed": eval_metrics.irrelevant_confirmed,
                     "finding_precision": eval_metrics.finding_precision,
                 },
                 per_cwe=eval_metrics.per_cwe,

@@ -21,6 +21,20 @@ For each finding, examine the vulnerable_code and exploit_argument and determine
 If it is incorrect, assign the most appropriate CWE from the taxonomy above.
 If the finding does not match any CWE in the taxonomy, keep the original CWE.
 
+Classification guidance — use these code patterns to determine the correct CWE:
+- CWE-22: User input concatenated into file paths (snprintf, strcat, fopen with user-controlled path components)
+- CWE-78: User input reaching system(), popen(), exec*(), or subprocess with shell=True
+- CWE-89: User input concatenated into SQL query strings (sprintf, strcat, +, f-string into SQL)
+- CWE-190: Arithmetic on user-controlled integers without overflow/bounds check, especially before malloc/calloc allocation
+- CWE-476: Pointer dereference after a code path where it could be NULL (failed malloc, unchecked function return)
+- CWE-798: String literals used directly as passwords, API keys, cryptographic keys, or authentication secrets
+
+Common misclassifications to watch for:
+- CWE-120 (Buffer Overflow) vs CWE-190: If the root cause is an integer overflow that leads to a wrong buffer size, classify as CWE-190 (the overflow), not CWE-120 (the consequence).
+- CWE-134 (Format String) vs CWE-78: If user input reaches printf-family functions, consider CWE-134; if it reaches system/exec, it is CWE-78.
+- CWE-415 (Double Free) vs CWE-476: If the issue is dereferencing a NULL pointer, it is CWE-476; if it is freeing memory twice, keep the original CWE.
+- CWE-122 (Heap Buffer Overflow) vs CWE-190: If the overflow originates from unchecked integer arithmetic used in allocation size, classify as CWE-190.
+
 You must respond with ONLY a valid JSON array. No explanation, no markdown, no backticks.
 Each object must have exactly these fields:
 - finding_id: string (matching the input finding_id exactly)

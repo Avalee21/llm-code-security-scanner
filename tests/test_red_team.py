@@ -62,7 +62,7 @@ def test_multiple_findings():
     payload = [
         {**SAMPLE_PAYLOAD, "finding_id": "F-001"},
         {**SAMPLE_PAYLOAD, "finding_id": "F-002", "cwe_id": "CWE-22", "cwe_name": "Path Traversal"},
-        {**SAMPLE_PAYLOAD, "finding_id": "F-003", "severity": "critical"},
+        {**SAMPLE_PAYLOAD, "finding_id": "F-003", "cwe_id": "CWE-78", "cwe_name": "OS Command Injection", "severity": "critical"},
     ]
     result = _run_with_mock("def foo(): pass", payload)
 

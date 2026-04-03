@@ -1,8 +1,9 @@
-"""Baseline evaluation: single-pass LLM classification (no debate).
+"""Red-Team-Only baseline evaluation (no debate).
 
-This provides a comparison point against the multi-agent Red/Blue/Judge
-pipeline.  Each sample gets ONE LLM call that classifies the code as
-vulnerable or safe and, if vulnerable, identifies the CWE.
+This provides a fair comparison point against the multi-agent debate
+pipeline.  Each sample gets the SAME Red Team prompt used by the debate
+pipeline, but all findings are auto-confirmed — no Blue Team challenge,
+no Judge review.
 
 Usage:
     python -m scripts.eval_baseline              # all samples
@@ -12,41 +13,19 @@ Usage:
 import argparse
 import hashlib
 import json
-import re
 import sys
 
 import mlflow
-from langchain_core.prompts import ChatPromptTemplate
 
-from utils.llm import get_llm, get_llm_info, parse_llm_json
+from agents.red_team import run_red_team, SYSTEM_PROMPT as RED_TEAM_PROMPT
+from utils.llm import get_llm_info
 from utils.metrics import SampleResult, classify_sample, compute_metrics
 from utils.schemas import (
-    BlueTeamDefense,
     DebateReport,
     JudgeVerdict,
-    RedTeamFinding,
 )
 
 GOLDEN_SET_PATH = "data/golden_set.json"
-
-SYSTEM_PROMPT = """\
-You are a security code reviewer. Analyse the submitted code and determine
-whether it contains an exploitable vulnerability.
-
-You must respond with ONLY a valid JSON object. No explanation, no markdown,
-no backticks.  The object must have exactly these fields:
-- vulnerable: boolean (true if the code has a genuine, exploitable vulnerability)
-- cwe_id: string or null (e.g. "CWE-89" if vulnerable, null if safe)
-- cwe_name: string or null (e.g. "SQL Injection" if vulnerable, null if safe)
-- reasoning: string (brief explanation citing specific code evidence)
-"""
-
-USER_PROMPT = """\
-Review this code for security vulnerabilities:
-```
-{code}
-```
-"""
 
 
 def load_golden_set() -> list[dict]:
@@ -54,58 +33,24 @@ def load_golden_set() -> list[dict]:
         return json.load(f)
 
 
-def _parse_response(raw: str) -> dict:
-    """Parse the LLM JSON response, stripping code fences if present."""
-    return parse_llm_json(raw)
-
-
-def _to_debate_report(result: dict) -> DebateReport:
-    """Convert a single-pass classification into a DebateReport for metrics."""
-    if result["vulnerable"]:
-        finding = RedTeamFinding(
-            finding_id="F-001",
-            cwe_id=result.get("cwe_id") or "CWE-000",
-            cwe_name=result.get("cwe_name") or "Unknown",
-            severity="high",
-            vulnerable_code="(baseline — no snippet)",
-            exploit_argument=result.get("reasoning", ""),
-        )
-        verdict = JudgeVerdict(
-            finding_id="F-001",
+def _auto_confirm(findings) -> DebateReport:
+    """Wrap Red Team findings into a DebateReport with all findings auto-confirmed."""
+    verdicts = [
+        JudgeVerdict(
+            finding_id=f.finding_id,
             confirmed=True,
-            reasoning=result.get("reasoning", ""),
+            reasoning="Auto-confirmed (red-team-only baseline)",
             patch=None,
         )
-        return DebateReport(
-            findings=[finding],
-            defenses=[],
-            verdicts=[verdict],
-        )
-
-    return DebateReport(findings=[], defenses=[], verdicts=[])
+        for f in findings
+    ]
+    return DebateReport(findings=findings, defenses=[], verdicts=verdicts)
 
 
 def run_baseline_single(code: str) -> DebateReport:
-    """Run a single baseline classification and return a DebateReport.
-
-    Retries once on parse failure; returns empty report (safe) if both fail.
-    """
-    llm = get_llm()
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", USER_PROMPT),
-    ])
-    chain = prompt | llm
-    for _attempt in range(2):
-        response = chain.invoke({"code": code})
-        try:
-            result = _parse_response(response.content)
-            if isinstance(result, dict):
-                return _to_debate_report(result)
-        except (json.JSONDecodeError, Exception):
-            continue
-    # Both attempts failed — treat as "no findings"
-    return DebateReport(findings=[], defenses=[], verdicts=[])
+    """Run Red Team only (no debate) and return a DebateReport with all findings auto-confirmed."""
+    findings = run_red_team(code)
+    return _auto_confirm(findings)
 
 
 def run_baseline(limit: int | None = None):
@@ -113,26 +58,17 @@ def run_baseline(limit: int | None = None):
     if limit is not None:
         samples = samples[:limit]
 
-    llm = get_llm()
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("human", USER_PROMPT),
-    ])
-    chain = prompt | llm
-
     results: list[SampleResult] = []
     errors: list[str] = []
 
-    print(f"Running BASELINE evaluation on {len(samples)} golden set samples\n")
-    print(f"{'#':<4} {'ID':<26} {'CWE':<8} {'Truth':<12} {'Flagged':<10} {'Class':<6}")
-    print("-" * 75)
+    print(f"Running RED-TEAM-ONLY baseline on {len(samples)} golden set samples\n")
+    print(f"{'#':<4} {'ID':<26} {'CWE':<8} {'Truth':<12} {'Flagged':<10} {'Class':<6} {'Findings'}")
+    print("-" * 85)
 
     for i, sample in enumerate(samples):
         sample_id = sample["id"]
         try:
-            response = chain.invoke({"code": sample["code"]})
-            result = _parse_response(response.content)
-            report = _to_debate_report(result)
+            report = run_baseline_single(sample["code"])
 
             flagged, classification, cwe_flagged, cwe_cls = classify_sample(
                 report, sample["has_vulnerability"], sample["cwe_id"],
@@ -149,7 +85,8 @@ def run_baseline(limit: int | None = None):
 
             truth = "VULN" if sample["has_vulnerability"] else "SAFE"
             flag_str = "YES" if flagged else "NO"
-            print(f"{i:<4} {sample_id:<26} {sample['cwe_id']:<8} {truth:<12} {flag_str:<10} {classification:<6}")
+            n_findings = len(report.findings)
+            print(f"{i:<4} {sample_id:<26} {sample['cwe_id']:<8} {truth:<12} {flag_str:<10} {classification:<6} {n_findings}")
 
         except Exception as e:
             errors.append(f"{sample_id}: {e}")
@@ -162,8 +99,8 @@ def run_baseline(limit: int | None = None):
     # ── Compute metrics ──────────────────────────────────────
     metrics = compute_metrics(results)
 
-    print(f"\n{'='*75}")
-    print(f"BASELINE RESULTS ({len(results)}/{len(samples)} samples completed, {len(errors)} errors)\n")
+    print(f"\n{'='*85}")
+    print(f"RED-TEAM-ONLY RESULTS ({len(results)}/{len(samples)} samples completed, {len(errors)} errors)\n")
     print(f"  Precision          : {metrics.precision:.3f}")
     print(f"  Recall             : {metrics.recall:.3f}")
     print(f"  F1 Score           : {metrics.f1:.3f}")
@@ -188,16 +125,16 @@ def run_baseline(limit: int | None = None):
     llm_info = get_llm_info()
 
     mlflow.set_experiment("code-security-scanner")
-    with mlflow.start_run(run_name="baseline-eval"):
+    with mlflow.start_run(run_name="red-team-only-eval"):
         mlflow.log_params({
             "eval_set": "golden_set",
             "eval_set_size": len(samples),
-            "method": "baseline-single-pass",
+            "method": "red-team-only",
             "completed": len(results),
             "errors": len(errors),
             "llm_backend": llm_info["llm_backend"],
             "llm_model": llm_info["llm_model"],
-            "prompt_baseline_sha": hashlib.sha256(SYSTEM_PROMPT.encode()).hexdigest()[:12],
+            "prompt_red_sha": hashlib.sha256(RED_TEAM_PROMPT.encode()).hexdigest()[:12],
         })
         mlflow.log_metrics({
             "precision": metrics.precision,
@@ -228,11 +165,11 @@ def run_baseline(limit: int | None = None):
         if errors:
             mlflow.log_text("\n".join(errors), "errors.txt")
 
-    print(f"\nMLflow run logged (baseline-eval). View with: mlflow ui")
+    print(f"\nMLflow run logged (red-team-only-eval). View with: mlflow ui")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Baseline single-pass evaluation.")
+    parser = argparse.ArgumentParser(description="Red-Team-Only baseline evaluation.")
     parser.add_argument("--limit", type=int, default=None,
                         help="Only evaluate the first N samples (default: all)")
     args = parser.parse_args()
