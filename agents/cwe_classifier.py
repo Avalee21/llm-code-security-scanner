@@ -4,10 +4,8 @@ from langchain_core.prompts import ChatPromptTemplate
 from utils.llm import get_llm, parse_llm_json
 from utils.schemas import RedTeamFinding
 
-SYSTEM_PROMPT = """You are a CWE (Common Weakness Enumeration) classification specialist.
-Your sole task is to verify and correct the CWE classification of each security finding.
-
-You are only responsible for correcting the CWE label — do NOT change severity, vulnerable_code, or exploit_argument.
+SYSTEM_PROMPT = """You are a CWE classification specialist.
+Verify and correct the CWE label of each finding. Do not change severity, vulnerable_code, or exploit_argument.
 
 Supported CWE taxonomy (the only valid CWEs for this project):
 - CWE-22: Path Traversal
@@ -25,7 +23,7 @@ Classification guidance — use these code patterns to determine the correct CWE
 - CWE-22: User input concatenated into file paths (snprintf, strcat, fopen with user-controlled path components)
 - CWE-78: User input reaching system(), popen(), exec*(), or subprocess with shell=True
 - CWE-89: User input concatenated into SQL query strings (sprintf, strcat, +, f-string into SQL)
-- CWE-190: Arithmetic on user-controlled integers without overflow/bounds check, especially before malloc/calloc allocation
+- CWE-190: Arithmetic whose result may exceed the target integer type's range without an overflow or bounds check
 - CWE-476: Pointer dereference after a code path where it could be NULL (failed malloc, unchecked function return)
 - CWE-798: String literals used directly as passwords, API keys, cryptographic keys, or authentication secrets
 
