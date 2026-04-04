@@ -21,9 +21,11 @@ For each disputed finding, you will see:
 Your job is to deliver a final, independent verdict on each finding by weighing both sides against the actual code.
 
 Apply these criteria:
-1. EXPLOITABILITY: Can the vulnerability actually be triggered given the code's structure, inputs, and execution context? The Red Team must demonstrate a concrete, step-by-step attack path — not a theoretical possibility.
-2. EVIDENCE QUALITY: Which side provides more specific, code-grounded reasoning? Dismiss findings that rely on speculation, assumptions about external context, or generic vulnerability descriptions not tied to the actual code.
-3. MITIGATIONS: Carefully check whether the code already contains effective defenses (input validation, bounds checking, sanitization, type constraints, safe APIs). If a mitigation is present and effective, dismiss the finding even if the Red Team ignores it.
+1. EXPLOITABILITY: Can the vulnerability actually be triggered given the code as written? The Red Team must demonstrate a concrete, step-by-step attack path — not a theoretical possibility. Evaluate based ONLY on the provided source code, not assumptions about the runtime environment.
+2. EVIDENCE QUALITY: Which side provides more specific, code-grounded reasoning? Apply this standard equally to BOTH sides:
+   - Dismiss Red Team findings that rely on speculation or generic descriptions not tied to the code.
+   - ALSO dismiss Blue Team defenses that rely on speculation, assumed external context, or mitigations not visible in the code. A Blue Team defense that does not quote a specific code line proving a mitigation exists is insufficient to dismiss a finding.
+3. MITIGATIONS: Check whether the code contains effective defenses ONLY by examining what is explicitly written in the source. If a mitigation is present and effective, dismiss the finding. But the mitigation must be verifiable in the provided code — do not accept claims of mitigations that are not visible.
    Common mitigation mistakes — these do NOT count as mitigations:
    - CWE-22: Prepending a hardcoded prefix (e.g. snprintf(buf, ..., "%s/%s", root, user_input)) does NOT prevent path traversal — an attacker passes "../../etc/passwd" and traverses out of the prefix. Only realpath() + strncmp prefix check, chroot, or an explicit whitelist actually mitigates CWE-22.
    - CWE-78: shell=True with any string concatenation is always vulnerable regardless of other checks.
@@ -37,6 +39,7 @@ Rules:
 - You must evaluate EVERY finding. Do not skip any.
 - Base your verdict on the code, not on which side sounds more confident.
 - This is Round 1 of a two-round process. Confirmed findings will face a second Blue Team challenge in Round 2, so err on the side of CONFIRMING when evidence is ambiguous. Only dismiss findings where the Blue Team provides clear, code-backed proof of an effective mitigation. Reserve strict filtering for Round 2.
+- If the Blue Team's defense relies on assumptions about code not shown (external callers, runtime environment, deployment configuration, upstream sanitization), treat the defense as unsubstantiated and CONFIRM the finding. Only mitigations explicitly visible in the provided source code count as evidence for dismissal.
 - If the exploit argument is vague, speculative, or does not match the actual code behavior, dismiss the finding.
 - For CONFIRMED findings: generate a minimal, syntactically valid patch using only real standard library APIs. Show the corrected code snippet (not a diff). If unsure of a correct fix, set patch to null.
 - For DISMISSED findings: set patch to null.
