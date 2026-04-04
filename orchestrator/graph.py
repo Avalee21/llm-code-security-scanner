@@ -236,8 +236,9 @@ def run_repo_scan(
 
         report = run_diff_pipeline(code, diff.filename)
 
-        confirmed = sum(1 for v in report.verdicts if v.confirmed)
-        dismissed = len(report.verdicts) - confirmed
+        merged = final_verdicts(report)
+        confirmed = sum(1 for v in merged if v.confirmed)
+        dismissed = len(merged) - confirmed
         total_findings += len(report.findings)
         total_confirmed += confirmed
         total_dismissed += dismissed

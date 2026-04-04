@@ -158,16 +158,7 @@ def run_judge(
 
     raw = response.content.strip()
 
-    # Strip markdown code fences if present
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    raw = re.sub(r"\\'", "'", raw)
-    raw = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
-    data = json.loads(raw)
+    data = parse_llm_json(raw)
     verdict_map = {item["finding_id"]: item for item in data}
 
     # Guarantee one verdict per finding, in input order

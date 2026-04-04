@@ -83,11 +83,20 @@ def parse_llm_json(raw: str | None) -> list | dict:
 
     # Fix common LLM JSON issues
     text = re.sub(r"\\'", "'", text)
-    text = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', text)
     text = re.sub(r',\s*([}\]])', r'\1', text)
+
+    def _fix_backslashes(s: str) -> str:
+        """Double-escape any backslash not part of a valid JSON escape sequence."""
+        return re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', s)
 
     try:
         return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+
+    # Retry with backslash fixing
+    try:
+        return json.loads(_fix_backslashes(text))
     except json.JSONDecodeError:
         pass
 
@@ -121,6 +130,10 @@ def parse_llm_json(raw: str | None) -> list | dict:
                     candidate = re.sub(r',\s*([}\]])', r'\1', candidate)
                     try:
                         return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        pass
+                    try:
+                        return json.loads(_fix_backslashes(candidate))
                     except json.JSONDecodeError:
                         break
 
