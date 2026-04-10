@@ -329,26 +329,61 @@ mlflow ui                           # MLflow on port 5000 (separate terminal)
 
 ### AWS EC2 (CloudFormation)
 
-Deploy the full stack (Streamlit + MLflow) to EC2 with one click using the included CloudFormation template:
+Deploy the full stack (Streamlit + MLflow) to EC2 with one click using the included CloudFormation template.
 
-1. In AWS Console → **CloudFormation → Create stack → Upload a template file**
-2. Upload `infra/cloudformation.yml`
-3. Fill in parameters:
-   - **GroqApiKey** — your Groq API key (masked, stored securely)
-   - **KeyName** — an existing EC2 key pair
-   - **InstanceType** — `t2.small` recommended
-4. Click **Create stack** and wait for `CREATE_COMPLETE`
-5. Go to the **Outputs** tab for your URLs:
+#### Step-by-step: Create the stack via AWS Console
+
+1. Open the **AWS Management Console** and search for **CloudFormation**
+2. Click **Create stack** → **With new resources (standard)**
+3. Under **Specify template**, choose **Upload a template file**
+4. Click **Choose file** and select `infra/cloudformation.yml` from your local machine
+5. Click **Next**
+6. Fill in the **Stack name** (e.g., `llm-security-scanner`) and parameters:
+   - **GroqApiKey** — your Groq API key (masked input, stored securely)
+   - **KeyName** — select an existing EC2 key pair (e.g., `vockey` for AWS Academy)
+   - **InstanceType** — `t2.small` recommended (default)
+   - **GitHubRepo** — leave default unless using a fork
+7. Click **Next** → **Next** (skip tags/options)
+8. On the review page, check **I acknowledge that AWS CloudFormation might create IAM resources** if prompted
+9. Click **Submit** and wait for status to reach `CREATE_COMPLETE` (~3 min)
+10. Go to the **Outputs** tab to find your URLs and SSH command
 
 | Output | Example |
 |---|---|
-| StreamlitURL | `http://<ip>:8501` |
-| MLflowURL | `http://<ip>:5000` |
-| SSHCommand | `ssh -i key.pem ec2-user@<ip>` |
+| StreamlitURL | `http://<public-ip>:8501` |
+| MLflowURL | `http://<public-ip>:5000` |
+| SSHCommand | `ssh -i <keyname>.pem ec2-user@<public-ip>` |
+
+#### SSH access
+
+The Docker build takes a few minutes after the stack is created. To check progress via SSH:
+
+```bash
+# Replace <path-to-key> with the location of your downloaded .pem file
+# Replace <public-ip> with the IP from the Outputs tab
+ssh -i <path-to-key>/labsuser.pem ec2-user@<public-ip>
+```
+
+> **First-time Windows users:** If you get a "permissions too open" error, fix it in PowerShell:
+> ```powershell
+> icacls "<path-to-key>\labsuser.pem" /inheritance:r
+> icacls "<path-to-key>\labsuser.pem" /remove "NT AUTHORITY\Authenticated Users"
+> icacls "<path-to-key>\labsuser.pem" /grant:r "${env:USERNAME}:(R)"
+> ```
+
+Once connected, verify the deployment:
+
+```bash
+cd /home/ec2-user/app
+sudo docker compose ps        # check container status
+sudo docker compose logs -f   # follow build/startup logs
+```
 
 The template automatically installs Docker, clones the repo, configures `.env`, and runs `docker compose up`.
 
-> **AWS Academy note:** Learner Lab sessions time out after ~4 hours. The instance stops when the session ends — restart it from the EC2 console next session (the public IP may change).
+> **Important:** The GitHub repo must be **public** for the automated clone to work. If private, the UserData script will fail on `git clone`.
+
+> **AWS Academy note:** Learner Lab sessions time out after ~4 hours. The instance stops when the session ends — restart it from the EC2 console next session (the public IP may change). The SSH key file is `labsuser.pem`, downloadable from the **AWS Details** panel in Learner Lab.
 
 ### Streamlit Community Cloud (free live demo)
 
