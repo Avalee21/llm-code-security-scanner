@@ -6,20 +6,29 @@ services:
     env_file:
       - .env
     volumes:
-      - app_mlruns:/app/mlruns
+      - mlruns:/app/mlruns
     depends_on:
       - mlflow
     restart: unless-stopped
 
   mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.21.3
-    command: mlflow ui --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns
-    ports:
-      - "5000:5000"
+    image: ghcr.io/mlflow/mlflow:v3.10.1
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri /mlruns --no-serve-artifacts
+    expose:
+      - "5000"
     volumes:
-      - mlflow_data:/mlruns
+      - mlruns:/mlruns
     restart: unless-stopped
 
+  mlflow-proxy:
+    image: nginx:alpine
+    ports:
+      - "5000:80"
+    depends_on:
+      - mlflow
+    restart: unless-stopped
+    command: >
+      sh -c "printf 'server { listen 80; location / { proxy_pass http://mlflow:5000; proxy_set_header Host localhost:5000; } }\n' > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+
 volumes:
-  app_mlruns:
-  mlflow_data:
+  mlruns:
