@@ -6,7 +6,7 @@ services:
     env_file:
       - .env
     volumes:
-      - mlruns:/app/mlruns
+      - app_mlruns:/app/mlruns
     depends_on:
       - mlflow
     restart: unless-stopped
@@ -17,8 +17,9 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - mlruns:/mlruns
+      - mlflow_data:/mlruns
     restart: unless-stopped
 
 volumes:
-  mlruns:
+  app_mlruns:
+  mlflow_data:
