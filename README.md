@@ -15,6 +15,8 @@ The pipeline is orchestrated with [LangGraph](https://github.com/langchain-ai/la
 
 ## Architecture
 
+![Full Architecture](docs/llm_scanner_full_architecture.svg)
+
 ### System Overview
 
 ```mermaid
@@ -295,12 +297,13 @@ Only findings the Judge confirms in the final round count. If Round 2 happened f
 docker compose up --build
 ```
 
-This starts two services:
+This starts three services:
 
 | Service | URL | Description |
 |---|---|---|
 | `app` | http://localhost:8501 | Streamlit dashboard |
-| `mlflow` | http://localhost:5000 | MLflow experiment tracking UI |
+| `mlflow` | (internal) | MLflow tracking server |
+| `mlflow-proxy` | http://localhost:5000 | Nginx reverse proxy for MLflow UI |
 
 Both services share an `mlruns` volume so experiment data is visible in both. API keys are read from `.env` (never baked into the image).
 
@@ -491,7 +494,12 @@ data/
 tests/                     Unit tests (pytest, all LLM calls mocked)
 infra/
   cloudformation.yml       AWS CloudFormation template (EC2 deployment)
+  nginx-mlflow.conf        Nginx reverse proxy config for MLflow
+docs/
+  llm_scanner_full_architecture.svg  Full architecture diagram
+.streamlit/
+  config.toml              Streamlit server configuration
 .github/workflows/
-  ci.yml                   CI pipeline (lint + test on push/PR)
+  ci.yml                   CI pipeline (test on push/PR)
   release.yml              Docker build + push to GHCR on tagged release
 ```
