@@ -1,7 +1,7 @@
 # LLM Code Security Scanner
 
 [![CI](https://github.com/Avalee21/llm-code-security-scanner/actions/workflows/ci.yml/badge.svg)](https://github.com/Avalee21/llm-code-security-scanner/actions/workflows/ci.yml)
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/Avalee21/llm-code-security-scanner/main/app.py)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://llm-code-security-scanner.streamlit.app/)
 
 A multi-agent system that performs automated code security review using an adversarial debate pattern. It can scan individual source files **or GitHub pull requests / commits**, focusing only on changed lines to catch vulnerabilities introduced by new code.
 
