@@ -327,6 +327,29 @@ mlflow ui                           # MLflow on port 5000 (separate terminal)
 - Store API keys in a secrets manager, not `.env` files
 - The MLflow UI has no built-in authentication — add basic auth via your proxy if exposed publicly
 
+### AWS EC2 (CloudFormation)
+
+Deploy the full stack (Streamlit + MLflow) to EC2 with one click using the included CloudFormation template:
+
+1. In AWS Console → **CloudFormation → Create stack → Upload a template file**
+2. Upload `infra/cloudformation.yml`
+3. Fill in parameters:
+   - **GroqApiKey** — your Groq API key (masked, stored securely)
+   - **KeyName** — an existing EC2 key pair
+   - **InstanceType** — `t2.small` recommended
+4. Click **Create stack** and wait for `CREATE_COMPLETE`
+5. Go to the **Outputs** tab for your URLs:
+
+| Output | Example |
+|---|---|
+| StreamlitURL | `http://<ip>:8501` |
+| MLflowURL | `http://<ip>:5000` |
+| SSHCommand | `ssh -i key.pem ec2-user@<ip>` |
+
+The template automatically installs Docker, clones the repo, configures `.env`, and runs `docker compose up`.
+
+> **AWS Academy note:** Learner Lab sessions time out after ~4 hours. The instance stops when the session ends — restart it from the EC2 console next session (the public IP may change).
+
 ### Streamlit Community Cloud (free live demo)
 
 You can deploy a live instance for free on [Streamlit Community Cloud](https://streamlit.io/cloud):
@@ -431,6 +454,8 @@ scripts/
 data/
   golden_set.json          30 curated C samples (6 CWEs × 5 each)
 tests/                     Unit tests (pytest, all LLM calls mocked)
+infra/
+  cloudformation.yml       AWS CloudFormation template (EC2 deployment)
 .github/workflows/
   ci.yml                   CI pipeline (lint + test on push/PR)
   release.yml              Docker build + push to GHCR on tagged release

@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: LLM Code Security Scanner — EC2 deployment with Docker Compose (Streamlit + MLflow)
+
+Parameters:
+  GroqApiKey:
+    Type: String
+    NoEcho: true
+    Description: Your Groq API key (stored securely, never logged)
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of an existing EC2 key pair for SSH access
+
+  InstanceType:
+    Type: String
+    Default: t2.small
+    AllowedValues: [t2.micro, t2.small, t2.medium]
+    Description: EC2 instance type
+
+  GitHubRepo:
+    Type: String
+    Default: https://github.com/Avalee21/llm-code-security-scanner.git
+    Description: GitHub repository URL to clone
+
+Mappings:
+  RegionAMI:
+    us-east-1:
+      AMI: ami-0c02fb55956c7d316
+    us-east-2:
+      AMI: ami-089a545a9ed9893b6
+    us-west-1:
+      AMI: ami-0ed05f4cb4b922f60
+    us-west-2:
+      AMI: ami-0892d3c7ee96c0bf7
+
+Resources:
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: LLM Security Scanner - SSH + Streamlit + MLflow
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8501
+          ToPort: 8501
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !FindInMap [RegionAMI, !Ref "AWS::Region", AMI]
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SecurityGroups:
+        - !Ref SecurityGroup
+      Tags:
+        - Key: Name
+          Value: llm-security-scanner
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          yum install -y docker git
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ec2-user
+
+          # Install Docker Compose plugin
+          mkdir -p /usr/local/lib/docker/cli-plugins
+          curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+            -o /usr/local/lib/docker/cli-plugins/docker-compose
+          chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+          # Clone repo
+          cd /home/ec2-user
+          git clone ${GitHubRepo} app
+          cd app
+
+          # Configure environment
+          cat > .env <<EOF
+          GROQ_API_KEY=${GroqApiKey}
+          MLFLOW_TRACKING_URI=./mlruns
+          EOF
+
+          chown -R ec2-user:ec2-user /home/ec2-user/app
+
+          # Start services
+          docker compose up -d --build
+
+Outputs:
+  StreamlitURL:
+    Description: Streamlit dashboard URL
+    Value: !Sub "http://${Instance.PublicIp}:8501"
+
+  MLflowURL:
+    Description: MLflow tracking UI URL
+    Value: !Sub "http://${Instance.PublicIp}:5000"
+
+  SSHCommand:
+    Description: SSH command to connect
+    Value: !Sub "ssh -i ${KeyName}.pem ec2-user@${Instance.PublicIp}"
