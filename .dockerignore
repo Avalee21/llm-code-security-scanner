@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env
+.git/
+.github/
+mlruns/
+.pytest_cache/
+tests/
+requirements-dev.txt
+*.md
+!README.md
+.dockerignore
+Dockerfile
+docker-compose.yml

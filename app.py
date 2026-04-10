@@ -1,6 +1,7 @@
 """Streamlit dashboard for the LLM Code Security Scanner."""
 
 import json
+import os
 import time
 from datetime import datetime, timezone
 
@@ -9,8 +10,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import mlflow
-from mlflow.tracking import MlflowClient
+# MLflow is optional — disabled on Streamlit Community Cloud (ephemeral filesystem)
+MLFLOW_AVAILABLE = os.getenv("MLFLOW_TRACKING_URI") or os.path.isdir("mlruns")
+if MLFLOW_AVAILABLE:
+    import mlflow
+    from mlflow.tracking import MlflowClient
 
 from orchestrator.graph import run_pipeline, run_repo_scan
 from scripts.eval_baseline import run_baseline_single
@@ -46,7 +50,11 @@ st.caption("Adversarial multi-agent vulnerability detection — Red Team → Blu
 
 with st.sidebar:
     st.header("⚙️ Settings")
-    track_mlflow = st.checkbox("Log to MLflow", value=True)
+    if MLFLOW_AVAILABLE:
+        track_mlflow = st.checkbox("Log to MLflow", value=True)
+    else:
+        track_mlflow = False
+        st.caption("MLflow logging disabled (no tracking URI configured)")
     st.divider()
     st.markdown(
         "**How it works**\n\n"
