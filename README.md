@@ -17,57 +17,6 @@ The pipeline is orchestrated with [LangGraph](https://github.com/langchain-ai/la
 
 ![Full Architecture](docs/llm_scanner_full_architecture.svg)
 
-### System Overview
-
-```mermaid
-flowchart LR
-    User([User])
-    subgraph Interface
-        CLI[main.py CLI]
-        UI[Streamlit Dashboard]
-    end
-    subgraph Orchestrator["LangGraph Orchestrator"]
-        Pipeline[orchestrator/graph.py]
-    end
-    subgraph Agents
-        RT[Red Team]
-        BT[Blue Team]
-        JG[Judge]
-        CWE[CWE Classifier]
-        VER[Verification]
-    end
-    subgraph Backend["LLM Backend"]
-        Groq[Groq — Llama 3.3 70B]
-        Foundry[MS Foundry — Llama 3.3 70B]
-        Modal[Modal — Qwen 2.5 Coder 32B]
-    end
-    MLflow[(MLflow)]
-
-    User --> CLI & UI
-    CLI & UI --> Pipeline
-    Pipeline --> RT & BT & JG & CWE & VER
-    RT & BT & JG & CWE --> Groq & Foundry & Modal
-    Pipeline --> MLflow
-```
-
-### Adversarial Debate Pipeline
-
-```mermaid
-flowchart TD
-    START([Code Input]) --> RT[Red Team — find vulnerabilities]
-    RT --> BT1[Blue Team R1 — challenge findings]
-    BT1 --> JG1[Judge R1 — confirm or dismiss]
-    JG1 --> CHECK{Any confirmed?}
-    CHECK -- No --> CWE[CWE Classifier — verify labels]
-    CHECK -- Yes --> BT2[Blue Team R2 — escalated re-challenge]
-    BT2 --> JG2[Judge R2 — final verdict]
-    JG2 --> CWE
-    CWE --> VER[Verification — validate patches]
-    VER --> END([Debate Report])
-```
-
-Only findings that survive the full adversarial debate (both rounds) are confirmed. Round 2 verdicts override Round 1 when present.
-
 ## Setup
 
 ### Option A: Docker (recommended)
